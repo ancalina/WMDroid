@@ -27,12 +27,14 @@ final class TodayModules {
     }
     private final Context context;private final Handler main=new Handler(Looper.getMainLooper());
     private final ExecutorService io=Executors.newSingleThreadExecutor();private final java.util.function.Consumer<List<Row>> delivered;
+    private java.util.function.Consumer<List<Module>> providersChanged;
     // Binder widget calls cannot be canceled; keep public queries on their own worker.
     private final ThreadPoolExecutor widgets=new ThreadPoolExecutor(1,1,0L,TimeUnit.MILLISECONDS,new LinkedBlockingQueue<Runnable>());
     private List<Row> latest=Collections.emptyList();
     private final List<Uri> observed=new ArrayList<>();private Future<?> pending,pendingWidget;private Query signal;private int generation;private boolean stopped;
     private final ContentObserver observer=new ContentObserver(main){@Override public void onChange(boolean self){refresh();}};
     TodayModules(Context c,java.util.function.Consumer<List<Row>> delivered){context=c;this.delivered=delivered;latest=restoreRows();if(!latest.isEmpty())delivered.accept(latest);}
+    void setProviderListener(java.util.function.Consumer<List<Module>> listener){providersChanged=listener;}
     private List<Row> restoreRows(){
         SharedPreferences cache=context.getSharedPreferences("today_modules_cache",0);
         try{
@@ -87,9 +89,11 @@ final class TodayModules {
     void refresh(){
         if(stopped)return;cancel();int ticket=++generation;signal=Build.VERSION.SDK_INT>=16?new ModernQuery(UiLanguage.language(context)):new Query(UiLanguage.language(context));final Query querySignal=signal;
         pending=io.submit(()->{
-            List<Module> selected=new ArrayList<>();for(Module module:discover(context))if(context.getSharedPreferences("today",Context.MODE_PRIVATE).getBoolean("module_"+module.authority,false))selected.add(module);
+            List<Module> found=Collections.unmodifiableList(discover(context));
+            List<Module> selected=new ArrayList<>();for(Module module:found)if(context.getSharedPreferences("today",Context.MODE_PRIVATE).getBoolean("module_"+module.authority,false))selected.add(module);
             main.post(()->{
-                if(stopped||ticket!=generation)return;
+                if(stopped||ticket!=generation||querySignal.isCanceled())return;
+                if(providersChanged!=null)providersChanged.accept(found);
                 context.getContentResolver().unregisterContentObserver(observer);observed.clear();
                 for(Module module:selected){Uri uri=TodayContract.rows(module.authority);try{context.getContentResolver().registerContentObserver(uri,false,observer);observed.add(uri);}catch(RuntimeException removed){}}
                 List<Row> retained=latest;

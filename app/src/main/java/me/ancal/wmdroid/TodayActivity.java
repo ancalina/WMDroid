@@ -69,6 +69,7 @@ public final class TodayActivity extends Activity {
     private final java.util.Set<String> loadingFontPreviews=new java.util.HashSet<>(),failedFontPreviews=new java.util.HashSet<>();
     private TodayDateView date;
     private TodayModules modules;
+    private java.util.List<TodayModules.Module> availableModules=java.util.Collections.emptyList();
     private java.util.List<TodayModules.Row> moduleRows=new ArrayList<>();
     private TextView status, owner, messages, tasks, calendar;
     private int calendarRequest;
@@ -139,6 +140,11 @@ public final class TodayActivity extends Activity {
         // Retire the alternate theme without changing the user's custom accent.
         if(prefs.getBoolean("rose",false))prefs.edit().putBoolean("rose",false).apply();
         modules=new TodayModules(this,rows->{moduleRows=rows;renderModules();});
+        modules.setProviderListener(found->{
+            availableModules=found;
+            for(UiDialog dialog=currentDialog;dialog!=null;dialog=dialog.previous)if(dialog.spec.view instanceof TodaySettingsPage)
+                ((TodaySettingsPage)dialog.spec.view).updateProviders(found);
+        });
         loadFonts();
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
@@ -1821,11 +1827,9 @@ public final class TodayActivity extends Activity {
             public boolean available(String id){return id.equals("작업")||id.equals("일정")||id.equals("소유자 정보")||id.equals("무선")||id.equals("날짜");}
             public void open(String id){switch(id){case "작업":taskOptions();break;case "일정":calendarOptions();break;case "소유자 정보":editOwner();break;case "무선":connectionSettings();break;case "날짜":titleClockSettings();break;}}
         },this::themeSettings,this::titleClockSettings);
+        panel.updateProviders(availableModules);
         show(dialog("오늘",panel).setPropertySheet(null).create());
-        worker.execute(()->{java.util.List<TodayModules.Module> found=TodayModules.discover(this);handler.post(()->{
-            if(destroyed)return;
-            for(UiDialog dialog=currentDialog;dialog!=null;dialog=dialog.previous)if(dialog.spec.view==panel){panel.updateProviders(found);break;}
-        });});
+        modules.refresh();
     }
     private void calendarOptions(){
         int flags=prefs.getInt("calendar_flags",3);LinearLayout panel=column();panel.setPadding(8,8,8,0);

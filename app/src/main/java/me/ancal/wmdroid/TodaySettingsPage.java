@@ -125,7 +125,17 @@ final class TodaySettingsPage extends LinearLayout implements WmControls.Restyle
         }
         refreshRows();updateButtons();
     }
-    void updateProviders(List<TodayModules.Module> values){providers.clear();providers.addAll(values);render();}
+    void updateProviders(List<TodayModules.Module> values){
+        boolean same=providers.size()==values.size();
+        for(int i=0;same&&i<values.size();i++)same=providers.get(i).authority.equals(values.get(i).authority)&&providers.get(i).label.equals(values.get(i).label);
+        if(same)return;
+        int position=itemScroll.getRequestedScrollPosition();providers.clear();providers.addAll(values);
+        if(selected!=null&&selected.startsWith("provider:")){
+            boolean present=false;for(TodayModules.Module provider:providers)if(selected.equals("provider:"+provider.authority)){present=true;break;}
+            if(!present)selected=null;
+        }
+        render();itemScroll.scrollToPosition(position);
+    }
     private void choose(String id){selected=id;for(int i=0;i<rows.getChildCount();i++)rows.getChildAt(i).setSelected(id.equals(rows.getChildAt(i).getTag()));updateButtons();}
     private void updateButtons(){int index=order.indexOf(selected);up.setEnabled(index>1);down.setEnabled(index>0&&index<order.size()-1);configure.setEnabled(selected!=null&&options.available(selected));}
     private void move(int delta){int from=order.indexOf(selected),to=from+delta;if(from<=0||to<1||to>=order.size())return;Collections.swap(order,from,to);prefs.edit().putString("today_order",new JSONArray(order).toString()).apply();render();itemScroll.post(()->itemScroll.scrollToPosition(Math.max(0,(to-2)*40)));}
