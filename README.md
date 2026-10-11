@@ -1,29 +1,34 @@
 # WMDroid
 
-Android HOME 런처. `me.ancal.wmdroid`, minSdk 14, targetSdk 35.
-Windows Mobile 스타일 UI를 Android View·Canvas·시스템 API로 구현한다.
-Windows CE 바이너리는 실행하지 않는다.
+[한국어](README.ko.md)
 
-## 빌드
+Android HOME launcher. `me.ancal.wmdroid`, minSdk 14, targetSdk 35.
+It implements a Windows Mobile-style UI with Android Views, Canvas and system APIs.
+It does not execute Windows CE binaries.
 
-이 저장소는 SDK AAR을 사용한다. SDK·예제·리소스 추출기 소스는 별도 저장소다.
-별도로 빌드하거나 배포받은 `WMDroid-sdk.aar`을 `libs/WMDroid-sdk.aar`에 넣는다.
-SDK AAR과 의존성 바이너리는 이 저장소에 포함하지 않는다.
+## Build
 
-Python 3, JDK 17 이상, Android SDK의 android-35와 build-tools가 필요하다.
-배포 빌드 검증에는 PATH의 `openssl`도 필요하다. 아래 빌드 도구는 다운로드하지 않는다.
-`tools/cache/**/dependencies.json`에 지정된 파일을 해당 경로에 준비한다.
-파일의 SHA256이 지정값과 다르면 빌드가 중단된다.
+This repository consumes the SDK AAR. SDK, example and resource-extractor sources
+are in separate repositories. Place a separately built or distributed
+`WMDroid-sdk.aar` in `libs/WMDroid-sdk.aar`.
+The SDK AAR and dependency binaries are not included in this repository.
+
+Requires Python 3, JDK 17 or newer, and Android SDK android-35 and build-tools.
+Release verification also requires `openssl` on PATH. The build tools below do
+not download files. Prepare the files specified by
+`tools/cache/**/dependencies.json` at their listed paths.
+The build stops if a file's SHA256 differs from its pinned value.
 
 ```sh
 python3 tools/build_apk.py --sdk /path/to/Android/Sdk --jdk /path/to/jdk \
   --sdk-aar libs/WMDroid-sdk.aar
 ```
 
-결과: `build/WMDroid-debug.apk`. 개발키는 `build/debug.keystore`에 생성한다.
-Gradle도 `libs/WMDroid-sdk.aar`을 사용한다. Gradle은 의존성을 다운로드할 수 있다.
+Output: `build/WMDroid-debug.apk`. A development key is created in
+`build/debug.keystore`. Gradle also uses `libs/WMDroid-sdk.aar` and may download
+its dependencies.
 
-배포 빌드는 기존 PKCS#8 키와 X.509 인증서를 모두 지정한다.
+Release builds require both an existing PKCS#8 key and an X.509 certificate.
 
 ```sh
 python3 tools/build_apk.py --sdk /path/to/Android/Sdk --jdk /path/to/jdk \
@@ -33,25 +38,30 @@ python3 tools/check_release_build.py --sdk /path/to/Android/Sdk --jdk /path/to/j
   --cert /path/to/signing.x509.pem
 ```
 
-결과: `build/WMDroid-release.apk`. `debuggable=false`, Java 디버그 정보 제거,
-D8 release 모드를 적용한다. 검증에는 같은 소스·AAR로 만든 debug APK도 필요하다.
-서명키는 소스나 APK에 포함하지 않는다.
+Output: `build/WMDroid-release.apk`. The build uses `debuggable=false`, strips
+Java debug information and uses D8 release mode. Verification also needs a debug
+APK built from the same sources and AAR. Signing keys are not included in sources
+or APKs.
 
-## 리소스와 권한
+## Resources and permissions
 
-설정 → 개인 → 리소스팩에서 ZIP을 가져오거나 해제한다.
-Microsoft/OEM 폰트·사운드·배경·상세 아이콘은 배포 APK에 포함하지 않는다.
-팩이 없으면 대체 이미지·기본 색을 사용하며, 검토해 유지한 단순 상태 아이콘과 기존에 수작업으로 다시 그린 Today 무선·잠금 아이콘 2개는 SDK 내장 경로로 그린다. SDK의 OFL Gulim은 별도 OFL 고지를 따른다.
-원본 에셋이 필요한 팩은 사용자가 보유한 미디어에서 별도 추출기로 만든다.
-팩을 적용해도 모든 화면·동작의 원본 일치를 보장하지 않는다.
+Import or remove a ZIP under Settings → Personal → Resource pack.
+Distribution APKs exclude Microsoft/OEM fonts, sounds, backgrounds and detailed
+icons. Without a pack, fallback images and default colors are used. Retained
+simple status icons and two previously hand-redrawn Today wireless/lock icons
+use SDK built-in drawing paths. The SDK's OFL Gulim retains its separate OFL notices.
+Packs requiring original assets are created with the separate extractor from
+user-owned media. Applying a pack does not guarantee native parity for every
+screen or behavior.
 
-일정·연락처·알림·잠금 등은 Android 버전과 사용자가 허용한 권한에 따라 동작한다.
-WinCE GDI와 Android 글꼴 렌더링 차이, 미이식 동작이 남아 있다.
+Calendar, contacts, notifications and locking depend on Android version and user
+granted permissions. Differences between WinCE GDI and Android font rendering
+and unported behavior remain.
 
-## 라이선스
+## License
 
-런처: GPL-3.0-or-later. SDK: Apache-2.0.
-적용 범위는 [LICENSES.md](LICENSES.md), 고지는 [NOTICE](NOTICE),
-의존성과 미확인 범위는 [DEPENDENCIES.md](DEPENDENCIES.md)를 참조한다.
-추출한 리소스의 권리는 원저작자에게 있다.
-내보내기 검사 통과는 출처·corresponding source 검토 완료를 뜻하지 않는다.
+Launcher: GPL-3.0-or-later. SDK: Apache-2.0.
+See [LICENSES.md](LICENSES.md) for scope, [NOTICE](NOTICE) for notices and
+[DEPENDENCIES.md](DEPENDENCIES.md) for dependencies and unverified areas.
+Extracted resources retain their owners' rights.
+Passing export checks does not complete provenance or corresponding-source review.
