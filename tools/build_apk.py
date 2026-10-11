@@ -210,8 +210,8 @@ def main():
         resource_inputs.append(build / 'resources.zip')
     run([tools / 'aapt2', 'link', '-o', build / 'resources.apk', '-I', android,
          '--manifest', build / 'AndroidManifest.xml', '--java', build / 'generated',
-         '--min-sdk-version', str(args.min_sdk), '--target-sdk-version', '35', '--version-code', '1',
-         '--version-name', '0.1.0', *resource_inputs], project)
+         '--min-sdk-version', str(args.min_sdk), '--target-sdk-version', '35', '--version-code', '2',
+         '--version-name', '0.1.1', *resource_inputs], project)
     sdk_java = [] if args.without_sdk_sources or sdk_jar else sorted((ROOT / 'sdk/src/main/java').rglob('*.java'))
     java = sorted((source / 'java').rglob('*.java')) + sdk_java + sorted((build / 'generated').rglob('*.java'))
     multidex_classes = build / 'multidex.jar'

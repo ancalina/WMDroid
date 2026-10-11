@@ -10,8 +10,8 @@ import me.ancal.wmdroid.sdk.WmResources;
 final class SettingsPage extends WmSettingsView {
     private String iconRevision;
     interface Open {void open(String key);}
-    private static final String[][] keys={{"owner","today","menu","applet_targets","home_commands","sound","fonts","theme","resource_pack","display","app_icons"},{"power","backlight","about","language","experience","finger_mouse","home","notifications","platform"},{"wireless","wifi","bluetooth","connection_module","bluetooth_state"}};
-    private static final String[][] labels={{"소유자 정보","오늘","메뉴","열 앱 설정","오늘 하단바","소리 및 알림","글꼴","테마 색","리소스팩","화면 표시","Android 앱 아이콘"},{"전원","조명","정보","언어","옛 기기 동작","핑거마우스","기본 홈","알림 연결","Android 설정"},{"연결","Wi-Fi","Bluetooth","연결 모듈","Bluetooth 상태 연결"}};
+    private static final String[][] keys={{"owner","today","menu","applet_targets","home_commands","sound","fonts","theme","resource_pack","display","app_icons"},{"power","backlight","about","language","experience","finger_mouse","home","notifications","platform","updates"},{"wireless","wifi","bluetooth","connection_module","bluetooth_state"}};
+    private static final String[][] labels={{"소유자 정보","오늘","메뉴","열 앱 설정","오늘 하단바","소리 및 알림","글꼴","테마 색","리소스팩","화면 표시","Android 앱 아이콘"},{"전원","조명","정보","언어","옛 기기 동작","핑거마우스","기본 홈","알림 연결","Android 설정","업데이트 확인"},{"연결","Wi-Fi","Bluetooth","연결 모듈","Bluetooth 상태 연결"}};
     /** Keyed artwork cannot drift when tab items are inserted or reordered. */
     static int iconFor(String key){switch(key){
         case "owner":return R.drawable.wm_owner;
@@ -23,7 +23,7 @@ final class SettingsPage extends WmSettingsView {
         case "app_icons":return R.drawable.wm_settings_app_icons;
         case "power":return R.drawable.wm_cpl_power;
         case "backlight":case "display":return R.drawable.wm_cpl_backlight;
-        case "about":return R.drawable.wm_cpl_about;
+        case "about":case "updates":return R.drawable.wm_cpl_about;
         case "language":return R.drawable.wm_cpl_language;
         case "experience":return R.drawable.wm_cpl_performance;
         case "finger_mouse":return R.drawable.wm_settings_mouse;
