@@ -106,8 +106,15 @@ public final class TodayActivity extends Activity {
     private LinearLayout page;
     private boolean receiving, appearanceRefreshPending, delayedPresentation;
     private boolean ownerWakePending, ownerWakeListening;
+    private final TodaySession todaySession=new TodaySession();
+    private boolean sessionPowerPending, resumed, todayForeground;
+    private View sessionFocus;
     private final BroadcastReceiver ownerWake = new BroadcastReceiver() {
-        @Override public void onReceive(Context context, Intent intent) { ownerWakePending=true; }
+        @Override public void onReceive(Context context, Intent intent) {
+            if(Intent.ACTION_SCREEN_OFF.equals(intent.getAction())){
+                ownerWakePending=true;sessionPowerPending=true;todaySession.suspend(TodaySession.localMillis());
+            }else if(Intent.ACTION_SCREEN_ON.equals(intent.getAction())&&resumed)resumePowerSession();
+        }
     };
     private int accent;
     private boolean pendingAppearance,pendingLanguage,rebuildingAppearance;
@@ -141,6 +148,7 @@ public final class TodayActivity extends Activity {
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);pendingFontFamily=saved==null?null:saved.getString("font_import_family");
         prefs = getSharedPreferences("today", MODE_PRIVATE);
+        if(saved!=null){todaySession.restore(saved.getBundle("today_session"));sessionPowerPending=saved.getBoolean("today_session_power_pending",false);ownerWakePending=saved.getBoolean("owner_wake_pending",false);}
         // Retire the alternate theme without changing the user's custom accent.
         if(prefs.getBoolean("rose",false))prefs.edit().putBoolean("rose",false).apply();
         modules=new TodayModules(this,rows->{moduleRows=rows;renderModules();});
@@ -157,14 +165,16 @@ public final class TodayActivity extends Activity {
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING);
         overridePendingTransition(0, 0);
         if(Build.VERSION.SDK_INT>=21)getWindow().setNavigationBarColor(Color.rgb(20,117,126));
-        buildHome();BrightnessPage.apply(this,prefs);prefs.registerOnSharedPreferenceChangeListener(settingsChanged);ProgramsPage.prewarm(this,worker);boolean restoredNotes=restoreNotes(saved),restoredContact=restoreContactEditor(saved);boolean restoredAppointment=restoreAppointment(saved,!restoredNotes&&!restoredContact);boolean restoredSettings=!restoredNotes&&!restoredContact&&!restoredAppointment&&restoreSettingsGrid(saved);if(!restoredNotes&&!restoredContact&&!restoredAppointment&&!restoredSettings)handleShellCommand(getIntent());
+        buildHome();BrightnessPage.apply(this,prefs);prefs.registerOnSharedPreferenceChangeListener(settingsChanged);ProgramsPage.prewarm(this,worker);boolean restoredNotes=restoreNotes(saved),restoredContact=restoreContactEditor(saved);boolean restoredAppointment=restoreAppointment(saved,!restoredNotes&&!restoredContact);boolean restoredSettings=!restoredNotes&&!restoredContact&&!restoredAppointment&&restoreSettingsGrid(saved);if(!restoredNotes&&!restoredContact&&!restoredAppointment&&!restoredSettings)handleShellCommand(getIntent());if(saved!=null&&saved.getBoolean("today_session_foreground",false))foregroundTodaySession();
         IntentFilter wake=new IntentFilter(Intent.ACTION_SCREEN_OFF);
+        wake.addAction(Intent.ACTION_SCREEN_ON);
         if(Build.VERSION.SDK_INT>=33)registerReceiver(ownerWake,wake,Context.RECEIVER_NOT_EXPORTED);else registerReceiver(ownerWake,wake);
         ownerWakeListening=true;
     }
 
     @Override protected void onResume() {
         super.onResume();TaskReminders.schedule(this);refreshContacts();preparedStart=null;BrightnessPage.apply(this,prefs);
+        resumed=true;
         if (!receiving) {
             IntentFilter filter = new IntentFilter(MessageNotifications.CHANGED);
             filter.addAction(Intent.ACTION_BATTERY_CHANGED);filter.addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED);filter.addAction(android.media.AudioManager.RINGER_MODE_CHANGED_ACTION);filter.addAction(ConnectivityManager.CONNECTIVITY_ACTION);filter.addAction(android.net.wifi.WifiManager.NETWORK_STATE_CHANGED_ACTION);filter.addAction(android.net.wifi.WifiManager.SUPPLICANT_STATE_CHANGED_ACTION);filter.addAction(Intent.ACTION_TIME_TICK);filter.addAction(Intent.ACTION_TIME_CHANGED);filter.addAction(Intent.ACTION_TIMEZONE_CHANGED);filter.addAction(Intent.ACTION_DATE_CHANGED);
@@ -174,11 +184,12 @@ public final class TodayActivity extends Activity {
             receiving = true;
         }
         handler.removeCallbacks(tick); tick.run();refreshMessageNotifications();
-        if(currentDialog!=null&&currentDialog.spec.view instanceof me.ancal.wmdroid.sdk.WmBrowserView)((me.ancal.wmdroid.sdk.WmBrowserView)currentDialog.spec.view).resume();
-        if(ownerWakePending){ownerWakePending=false;showOwnerOnWake();}
+        if(currentDialog!=null&&!todayForeground&&currentDialog.spec.view instanceof me.ancal.wmdroid.sdk.WmBrowserView)((me.ancal.wmdroid.sdk.WmBrowserView)currentDialog.spec.view).resume();
+        resumePowerSession();
     }
 
     @Override protected void onPause() {
+        resumed=false;
         cancelApplet();
         if(modules!=null)modules.pause();
         if(currentDialog!=null&&currentDialog.spec.onClose!=null)currentDialog.spec.onClose.run();
@@ -191,22 +202,50 @@ public final class TodayActivity extends Activity {
 
     private boolean destroyed;
     @Override protected void onDestroy() { destroyed=true;for(UiDialog d=currentDialog;d!=null;d=d.previous)if(d.spec.view instanceof me.ancal.wmdroid.sdk.WmBrowserView)((me.ancal.wmdroid.sdk.WmBrowserView)d.spec.view).close();for(UiDialog d=currentDialog;d!=null;d=d.previous)if(d.spec.view instanceof me.ancal.wmdroid.sdk.WmMediaView)((me.ancal.wmdroid.sdk.WmMediaView)d.spec.view).close();mediaPicker=null;prefs.unregisterOnSharedPreferenceChangeListener(settingsChanged);handler.removeCallbacks(applySettings); if(ownerWakeListening)unregisterReceiver(ownerWake);worker.shutdownNow();if(modules!=null)modules.close();super.onDestroy(); }
-    @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); closeStart(); if(me.ancal.wmdroid.sdk.WmShell.ACTION.equals(intent.getAction())&&"notes".equals(intent.getStringExtra(me.ancal.wmdroid.sdk.WmShell.COMMAND))){runShellCommand("notes");return;} while (currentDialog != null) if(!currentDialog.dismiss())break;handleShellCommand(intent); }
+    @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent);closeStart();if(me.ancal.wmdroid.sdk.WmShell.ACTION.equals(intent.getAction())){String command=intent.getStringExtra(me.ancal.wmdroid.sdk.WmShell.COMMAND);if(command!=null)runShellCommand(command);}else foregroundTodaySession(); }
     private void handleShellCommand(Intent intent){
         if(!me.ancal.wmdroid.sdk.WmShell.ACTION.equals(intent.getAction()))return;
         String command=intent.getStringExtra(me.ancal.wmdroid.sdk.WmShell.COMMAND);
         if(command!=null)handler.post(()->runShellCommand(command));
     }
-    private void runShellCommand(String command){if(contactSaving())return;switch(command){
+    private void runShellCommand(String command){if("today".equals(command)){foregroundTodaySession();return;}if(reuseApplet(command)||contactSaving())return;switch(command){
         case "tasks":showTasks();break;
-        case "today":while(currentDialog!=null)if(!currentDialog.dismiss())break;break;
         case "calendar":openCalendar();break;case "contacts":openContacts();break;case "notes":openNotes(null);break;
         case "messages":openMessages();break;case "phone":openPhone();break;
         case "browser":openBrowser();break;
         case "media":openMedia();break;
         case "programs":programs();break;case "settings":settings();break;case "help":help();break;
     }}
-    @Override public void onBackPressed() { if(pendingApplet!=null){cancelApplet();return;} if (startMenu != null) {if(!me.ancal.wmdroid.sdk.WmControls.back(startMenu))closeStart();} else if(currentDialog!=null&&currentDialog.spec.view instanceof CalendarPage&&((CalendarPage)currentDialog.spec.view).backPicker())return;else if(currentDialog!=null&&me.ancal.wmdroid.sdk.WmControls.back(currentDialog.spec.view))return;else if(currentDialog!=null&&currentDialog.spec.onBack!=null)currentDialog.spec.onBack.run();else closePage(); }
+    @Override public void onBackPressed() { if(pendingApplet!=null){cancelApplet();return;} if (startMenu != null) {if(!me.ancal.wmdroid.sdk.WmControls.back(startMenu))closeStart();} else if(todayForeground){restoreSessionWindow();} else if(currentDialog!=null&&currentDialog.spec.view instanceof CalendarPage&&((CalendarPage)currentDialog.spec.view).backPicker())return;else if(currentDialog!=null&&me.ancal.wmdroid.sdk.WmControls.back(currentDialog.spec.view))return;else if(currentDialog!=null&&currentDialog.spec.onBack!=null)currentDialog.spec.onBack.run();else closePage(); }
+
+    private void resumePowerSession(){
+        if(!((android.os.PowerManager)getSystemService(POWER_SERVICE)).isScreenOn())return;
+        if(sessionPowerPending){
+            sessionPowerPending=false;
+            if(todaySession.resume(TodaySession.hours(prefs),TodaySession.localMillis()))foregroundTodaySession();
+        }
+        if(ownerWakePending){ownerWakePending=false;showOwnerOnWake();}
+    }
+    private void foregroundTodaySession(){
+        closeStart();if(currentDialog==null||todayForeground)return;
+        sessionFocus=currentDialog.window.findFocus();todayForeground=true;
+        // Foreground Today without closing the retained editor or its dialog stack.
+        ((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(screen.getWindowToken(),0);
+        currentDialog.window.setVisibility(View.INVISIBLE);
+        me.ancal.wmdroid.sdk.WmPaint.stopReplay(currentDialog.window);
+        if(currentDialog.spec.view instanceof me.ancal.wmdroid.sdk.WmBrowserView)((me.ancal.wmdroid.sdk.WmBrowserView)currentDialog.spec.view).pause();
+    }
+    private void restoreSessionWindow(){
+        if(!todayForeground||currentDialog==null)return;
+        closeStart();todayForeground=false;currentDialog.window.setVisibility(View.VISIBLE);currentDialog.window.bringToFront();
+        if(sessionFocus!=null&&sessionFocus.isShown())sessionFocus.requestFocus();sessionFocus=null;
+        if(currentDialog.spec.view instanceof me.ancal.wmdroid.sdk.WmBrowserView)((me.ancal.wmdroid.sdk.WmBrowserView)currentDialog.spec.view).resume();
+        if(pointer!=null)pointer.bringToFront();
+    }
+    private boolean reuseApplet(String command){
+        if(currentDialog==null||!command.equals(currentDialog.applet))return false;
+        restoreSessionWindow();return true;
+    }
     @Override public boolean onKeyDown(int key,android.view.KeyEvent event){
         if(key==android.view.KeyEvent.KEYCODE_VOLUME_UP||key==android.view.KeyEvent.KEYCODE_VOLUME_DOWN){
             android.media.AudioManager audio=(android.media.AudioManager)getSystemService(AUDIO_SERVICE);
@@ -357,7 +396,7 @@ public final class TodayActivity extends Activity {
         Intent picker=new Intent(Build.VERSION.SDK_INT>=19?Intent.ACTION_OPEN_DOCUMENT:Intent.ACTION_GET_CONTENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         try{startActivityForResult(picker,heavy?101:100);overridePendingTransition(0,0);}catch(RuntimeException absent){pendingFontFamily=null;toast("파일 선택기를 열 수 없습니다.");}
     }
-    @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);if(pendingAppointmentState!=null)out.putBundle("appointment_editor",pendingAppointmentState);else for(UiDialog owner=currentDialog;owner!=null;owner=owner.previous)if(owner.spec.view instanceof AppointmentPage){out.putBundle("appointment_editor",appointmentState((AppointmentPage)owner.spec.view,owner));break;}if(currentDialog!=null&&currentDialog.spec.view instanceof SettingsPage)out.putBundle("settings_grid",((SettingsPage)currentDialog.spec.view).saveInteractionState());if(pendingFontFamily!=null)out.putString("font_import_family",pendingFontFamily);for(UiDialog dialog=currentDialog;dialog!=null;dialog=dialog.previous)if(dialog.spec.view instanceof ContactEditorPage){out.putBundle("contact_editor",((ContactEditorPage)dialog.spec.view).saveState());break;}for(UiDialog d=currentDialog;d!=null;d=d.previous)if(d.spec.view instanceof NotesPage){Bundle note=((NotesPage)d.spec.view).saveState();if(note!=null)out.putBundle("notes_draft",note);else out.putBundle("notes_list",((NotesPage)d.spec.view).client.saveInteractionState());break;}if(notesPropertiesForm!=null&&notesPropertiesState!=null){Bundle properties=new Bundle(notesPropertiesState);properties.putString("name",notesPropertiesForm.name());String[] ids=properties.getStringArray("folder_ids");if(ids!=null&&notesPropertiesForm.folderIndex()<ids.length)properties.putString("chosen_folder",ids[notesPropertiesForm.folderIndex()]);properties.putInt("caret_start",notesPropertiesForm.nameField().getSelectionStart());properties.putInt("caret_end",notesPropertiesForm.nameField().getSelectionEnd());out.putBundle("notes_properties",properties);}}
+    @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putBoolean("today_session_foreground",todayForeground);out.putBundle("today_session",todaySession.save());out.putBoolean("today_session_power_pending",sessionPowerPending);out.putBoolean("owner_wake_pending",ownerWakePending);if(pendingAppointmentState!=null)out.putBundle("appointment_editor",pendingAppointmentState);else for(UiDialog owner=currentDialog;owner!=null;owner=owner.previous)if(owner.spec.view instanceof AppointmentPage){out.putBundle("appointment_editor",appointmentState((AppointmentPage)owner.spec.view,owner));break;}if(currentDialog!=null&&currentDialog.spec.view instanceof SettingsPage)out.putBundle("settings_grid",((SettingsPage)currentDialog.spec.view).saveInteractionState());if(pendingFontFamily!=null)out.putString("font_import_family",pendingFontFamily);for(UiDialog dialog=currentDialog;dialog!=null;dialog=dialog.previous)if(dialog.spec.view instanceof ContactEditorPage){out.putBundle("contact_editor",((ContactEditorPage)dialog.spec.view).saveState());break;}for(UiDialog d=currentDialog;d!=null;d=d.previous)if(d.spec.view instanceof NotesPage){Bundle note=((NotesPage)d.spec.view).saveState();if(note!=null)out.putBundle("notes_draft",note);else out.putBundle("notes_list",((NotesPage)d.spec.view).client.saveInteractionState());break;}if(notesPropertiesForm!=null&&notesPropertiesState!=null){Bundle properties=new Bundle(notesPropertiesState);properties.putString("name",notesPropertiesForm.name());String[] ids=properties.getStringArray("folder_ids");if(ids!=null&&notesPropertiesForm.folderIndex()<ids.length)properties.putString("chosen_folder",ids[notesPropertiesForm.folderIndex()]);properties.putInt("caret_start",notesPropertiesForm.nameField().getSelectionStart());properties.putInt("caret_end",notesPropertiesForm.nameField().getSelectionEnd());out.putBundle("notes_properties",properties);}}
     @Override protected void onActivityResult(int request,int result,Intent data){
         super.onActivityResult(request,result,data);
         if(request==103){final me.ancal.wmdroid.sdk.WmMediaView target=mediaPicker;final boolean append=mediaPickerAppend;mediaPicker=null;if(result==RESULT_OK&&data!=null&&target!=null&&target.state()!=me.ancal.wmdroid.sdk.WmMediaView.State.CLOSED)mediaPickerResult(target,data,append);return;}
@@ -408,7 +447,7 @@ public final class TodayActivity extends Activity {
         }
         if(attachedStart!=null){
             startMenu=attachedStart;preparedStart=openMenu;restyleStart(openMenu);
-            me.ancal.wmdroid.sdk.WmTitleBar title=(me.ancal.wmdroid.sdk.WmTitleBar)(active==null?homeTitle:active.title);
+            me.ancal.wmdroid.sdk.WmTitleBar title=(me.ancal.wmdroid.sdk.WmTitleBar)(active==null||todayForeground?homeTitle:active.title);
             selectedStart=title.start;selectedStart.setSelected(true);attachedStart.bringToFront();
         }
         updateFontPreviews();pendingLanguage=false;appearanceRefreshPending=false;refresh();if(modules!=null)modules.refresh();if(pointer!=null)pointer.bringToFront();
@@ -484,7 +523,7 @@ public final class TodayActivity extends Activity {
         hit.setOnClickListener(v->showStatus(kind,hit.getLeft()+hit.getWidth()/2));
     }
     private void showStatus(int kind){
-        TrayBar bar=trayBars.get(currentDialog==null?homeTitle:currentDialog.title);
+        TrayBar bar=trayBars.get(currentDialog==null||todayForeground?homeTitle:currentDialog.title);
         View hit=bar==null?null:bar.hit(kind);showStatus(kind,hit==null?480-19-(2-kind)*38:hit.getLeft()+hit.getWidth()/2);
     }
     private void showStatus(int kind,int anchor){
@@ -616,7 +655,7 @@ public final class TodayActivity extends Activity {
     }
     private java.util.List<String> todayOrder(){
         java.util.List<String> order = new ArrayList<>(); order.add("날짜");
-        try { JSONArray saved=new JSONArray(prefs.getString("today_order","[]")); for(int i=0;i<saved.length();i++) { String key=saved.optString(i); if(todayRows.containsKey(key)&&!order.contains(key)) order.add(key); } } catch(JSONException ignored) { }
+        try { JSONArray saved=new JSONArray(prefs.getString("today_order","[]")); for(int i=0;i<saved.length();i++) { String key=saved.optString(i); if(todayRows.containsKey(key)&&!order.contains(key)) order.add(key); } } catch(JSONException|ClassCastException ignored) { }
         for(String key:todayRows.keySet())if(!order.contains(key))order.add(key);
         return order;
     }
@@ -673,7 +712,7 @@ public final class TodayActivity extends Activity {
 
     private void startItem(LinearLayout menu,String id){
         switch(id){
-            case "today":menuItem(menu,ui("오늘"),R.drawable.wm_start_today,()->{while(currentDialog!=null)if(!currentDialog.dismiss())break;});return;
+            case "today":menuItem(menu,ui("오늘"),R.drawable.wm_start_today,()->runShellCommand("today"));return;
             case "calendar":menuItem(menu,ui("일정"),R.drawable.wm_calendar,this::openCalendar);return;
             case "contacts":menuItem(menu,ui("연락처"),R.drawable.wm_contacts,this::openContacts);return;
             case "messages":menuItem(menu,ui("메시지"),R.drawable.wm_mail,this::openMessages);return;
@@ -773,6 +812,7 @@ public final class TodayActivity extends Activity {
     }
 
     private void programs() {
+        if(todayForeground&&reuseApplet("programs"))return;
         ProgramsPage panel=new ProgramsPage(this,regular,prefs.getBoolean("rose",false),worker,new ProgramsPage.Host(){
             public void launch(ResolveInfo info){
                 openApplet(()->{closePage();
@@ -783,7 +823,7 @@ public final class TodayActivity extends Activity {
                 TodayActivity.this.launch(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+info.activityInfo.packageName)));
             }
         });
-        UiDialog window=dialog("프로그램",panel).setPositiveButton("찾기",null).setNegativeButton("닫기",null).create();
+        UiDialog window=dialog("프로그램",panel).setApplet("programs").setPositiveButton("찾기",null).setNegativeButton("닫기",null).create();
         show(window);window.getButton(UiDialog.BUTTON_POSITIVE).setOnClickListener(v->panel.showSearch());
     }
 
@@ -794,8 +834,9 @@ public final class TodayActivity extends Activity {
     private UiDialog.Builder dialog(String title, View view) { return new UiDialog.Builder(this).setTitle(title).setView(view); }
     private void show(UiDialog dialog) { if(!contactSaving())dialog.show(); }
     private void editOwner() {
+        if(todayForeground&&reuseApplet("owner"))return;
         OwnerPage editor=new OwnerPage(this,prefs,regular,this::refresh);
-        show(dialog("소유자 정보",editor).setPropertySheet(editor::save).create());
+        show(dialog("소유자 정보",editor).setApplet("owner").setPropertySheet(editor::save).create());
     }
 
     private void showOwnerOnWake() {
@@ -821,11 +862,12 @@ public final class TodayActivity extends Activity {
     }
     private void saveTasks(JSONArray tasks) { prefs.edit().putString("tasks", tasks.toString()).apply(); refresh(); }
     private void showTasks() {
+        if(todayForeground&&reuseApplet("tasks"))return;
         // Replacing an edited list must not expose its stale JSON snapshot on Back.
         if (currentDialog != null && currentDialog.spec.title.equals("작업")) currentDialog.dismiss();
         JSONArray saved = readTasks(); String[] labels = new String[saved.length()]; boolean[] checked = new boolean[saved.length()];
         for (int i = 0; i < saved.length(); i++) { JSONObject item=saved.optJSONObject(i); labels[i] = item.optString("title") + (!item.optString("due").isEmpty()?"\n"+item.optString("due"):"") + (!item.optString("category").isEmpty()?" · "+item.optString("category"):"") + (item.optInt("priority")!=0?" · "+priorityName(item.optInt("priority")):""); checked[i] = saved.optJSONObject(i).optBoolean("done"); }
-        UiDialog.Builder builder = new UiDialog.Builder(this).setTitle("작업").setMultiChoiceItems(labels, checked, (d, which, done) -> {
+        UiDialog.Builder builder = new UiDialog.Builder(this).setTitle("작업").setApplet("tasks").setMultiChoiceItems(labels, checked, (d, which, done) -> {
             try { JSONArray latest=TaskReminders.latest(prefs,saved);latest.getJSONObject(which).put("done",done);saveTasks(latest);saved.getJSONObject(which).put("done",done); } catch (JSONException invalid) { toast("작업을 저장하지 못했습니다.");showTasks(); }
         }).setLongClick((d,w)->editTask(w)).setPositiveButton("새 작업", (d, which) -> addTask()).setNeutralButton("완료된 작업 삭제", (d, which) -> {
             try{JSONArray latest=TaskReminders.latest(prefs,saved),keep=new JSONArray();for(int i=0;i<latest.length();i++)if(!latest.getJSONObject(i).optBoolean("done"))keep.put(latest.getJSONObject(i));saveTasks(keep);}catch(JSONException invalid){toast("작업을 저장하지 못했습니다.");}showTasks();
@@ -897,11 +939,12 @@ public final class TodayActivity extends Activity {
     private boolean mediaPickerAppend;
     private MediaLibraryPage mediaLibrary;
     private void openMedia(){
+        if(todayForeground&&reuseApplet("media"))return;
         if(openAppletTarget("media"))return;
         for(UiDialog d=currentDialog;d!=null;d=d.previous)if(d.spec.view instanceof me.ancal.wmdroid.sdk.WmMediaView){while(currentDialog!=d)if(!currentDialog.dismiss())return;return;}
         final me.ancal.wmdroid.sdk.WmMediaView view=new me.ancal.wmdroid.sdk.WmMediaView(this,regular,bold);
         final MediaLibraryPage library=new MediaLibraryPage(this,view,worker,handler,this::toast);mediaLibrary=library;
-        final UiDialog[] owner=new UiDialog[1];owner[0]=dialog("Windows Media",view).setCloseValidator(()->!view.back()).setCommands("지금 재생",()->{if(view.isPropertiesVisible())view.back();else if(view.isLibraryVisible())library.open();else if(view.isPlaylistVisible())view.playSelection();else view.showPlaylist(true);},"메뉴",()->mediaCommands(view)).setCommandMenus(false,true).create();
+        final UiDialog[] owner=new UiDialog[1];owner[0]=dialog("Windows Media",view).setApplet("media").setCloseValidator(()->!view.back()).setCommands("지금 재생",()->{if(view.isPropertiesVisible())view.back();else if(view.isLibraryVisible())library.open();else if(view.isPlaylistVisible())view.playSelection();else view.showPlaylist(true);},"메뉴",()->mediaCommands(view)).setCommandMenus(false,true).create();
         view.setListener(player->{boolean ok=player.isPropertiesVisible()||player.isPlaylistVisible()||player.isLibraryVisible();String caption=player.isPropertiesVisible()?"확인":ok?"재생":"지금 재생";if(owner[0].spec.closeIsOk!=ok||!caption.equals(owner[0].spec.leftCaption)){owner[0].spec.closeIsOk=ok;owner[0].spec.leftCaption=caption;owner[0].restyle();}});
         view.setPlaylistCommandListener(id->{if(id==30009)library.show();else if(id==20001)library.open();else if(id==-1)library.back();else if(id==-2)commandMenu(true,new String[]{ui("라이브러리")},-1,n->library.show());else if(id==30006)mediaSavePlaylist(view);else if(id==30010)mediaProperties(view,true);else if(id==0)mediaCommands(view);});
         owner[0].spec.onClose=()->{if(owner[0].dismissed){if(mediaPicker==view)mediaPicker=null;view.close();}else view.pause();};show(owner[0]);library.show();
@@ -988,11 +1031,12 @@ public final class TodayActivity extends Activity {
         },id->{if(id==10005)mediaLibrary.show();else if(id==20008)mediaOpenFile(view);else if(id==-30006)mediaSavedPlaylists(view);else if(id==10002)view.toggle();else if(id==10004)view.stop();else if(id==10003)view.setRepeat(!view.repeat());else if(id==10011)view.setFullScreen(!view.fullScreen());else if(id==10008)mediaProperties(view,false);});
     }
     private void openBrowser(){
+        if(todayForeground&&reuseApplet("browser"))return;
         if(openAppletTarget("browser"))return;
         for(UiDialog d=currentDialog;d!=null;d=d.previous)if(d.spec.view instanceof me.ancal.wmdroid.sdk.WmBrowserView){while(currentDialog!=d)if(!currentDialog.dismiss())return;return;}
         final me.ancal.wmdroid.sdk.WmBrowserView view;
-        try{view=new me.ancal.wmdroid.sdk.WmBrowserView(this,regular);}catch(RuntimeException unavailable){show(dialog("Internet Explorer",null).setAuthoredMessage("Android WebView를 사용할 수 없습니다.").create());return;}
-        final UiDialog[] owner=new UiDialog[1];owner[0]=dialog("Internet Explorer",view).setCommands("뒤로",view::back,"메뉴",()->browserCommands(view)).setCommandMenus(false,true).create();
+        try{view=new me.ancal.wmdroid.sdk.WmBrowserView(this,regular);}catch(RuntimeException unavailable){show(dialog("Internet Explorer",null).setApplet("browser").setAuthoredMessage("Android WebView를 사용할 수 없습니다.").create());return;}
+        final UiDialog[] owner=new UiDialog[1];owner[0]=dialog("Internet Explorer",view).setApplet("browser").setCommands("뒤로",view::back,"메뉴",()->browserCommands(view)).setCommandMenus(false,true).create();
         owner[0].spec.onClose=()->{if(owner[0].dismissed)view.close();else view.pause();};
         final String[] recorded={""};
         view.setListener(new me.ancal.wmdroid.sdk.WmBrowserView.Listener(){public void changed(me.ancal.wmdroid.sdk.WmBrowserView browser){
@@ -1101,11 +1145,12 @@ public final class TodayActivity extends Activity {
         }catch(RuntimeException failure){handler.post(()->{if(!destroyed&&currentDialog==origin)toast("브라우저 항목을 읽을 수 없습니다.");});}});
     }
     private void openNotes(Bundle restored){
+        if(restored==null&&todayForeground&&reuseApplet("notes"))return;
         for(UiDialog d=currentDialog;d!=null;d=d.previous)if(d.spec.view instanceof NotesPage){while(currentDialog!=d)if(!currentDialog.dismiss())return;return;}
         final UiDialog[] owner=new UiDialog[1];final NotesPage[] content=new NotesPage[1];
         NotesPage page=new NotesPage(this,regular,bold,accent,worker,()->{if(owner[0]!=null){owner[0].spec.closeIsOk=content[0].editing();owner[0].restyle();}});content[0]=page;page.client.setOnFolderListener(()->noteFolders(page));page.client.setOnActionListener((entry,command)->noteAction(page,entry,command));
         me.ancal.wmdroid.sdk.WmControls.localizeTree(page,UiLanguage.language(this));
-        owner[0]=dialog("메모",page).setCloseValidator(()->{if(page.busy())return false;if(!page.editing())return true;page.save(page::list);return false;})
+        owner[0]=dialog("메모",page).setApplet("notes").setCloseValidator(()->{if(page.busy())return false;if(!page.editing())return true;page.save(page::list);return false;})
             .setCommands("새로 만들기",page::fresh,"메뉴",()->notesCommands(page)).setCommandMenus(false,true).create();
         show(owner[0]);page.restore(restored);
     }
@@ -1138,13 +1183,13 @@ public final class TodayActivity extends Activity {
         final String[] folderIds=page.folderIds();String chosen=restored==null?expected.folder:restored.getString("chosen_folder",expected.folder);int folderIndex=0;for(int i=0;i<folderIds.length;i++)if(folderIds[i].equals(chosen))folderIndex=i;
         me.ancal.wmdroid.sdk.WmDocumentProperties form=new me.ancal.wmdroid.sdk.WmDocumentProperties(this,regular,UiLanguage.locale(this),restored==null?expected.title:restored.getString("name"),page.folderNames(),folderIndex,new String[]{ui("주 메모리")},0,me.ancal.wmdroid.sdk.WmNotesView.formatSize(expected.size),java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT,java.text.DateFormat.SHORT,UiLanguage.locale(this)).format(new Date(expected.modified)),"txt (.txt)",accent);
         final UiDialog[] owner=new UiDialog[1];final boolean[] done={false};
-        Runnable cancel=()->{if(page.busy())return;owner[0].dismiss();};
+        Runnable cancel=()->{if(page.busy())return;done[0]=true;owner[0].dismiss();};
         owner[0]=dialog("메모",form).setPropertySheet(()->{if(owner[0].dismissed&&notesPropertiesForm==form){notesPropertiesForm=null;notesPropertiesState=null;}}).setOnBack(cancel).setCloseValidator(()->{
             if(done[0])return true;if(page.busy())return false;
             String name=form.name();int first=0,last=name.length();while(first<last&&name.charAt(first)==' ')first++;while(last>first&&name.charAt(last-1)==' ')last--;String candidate=name.substring(first,last);
             String destination=folderIds[form.folderIndex()];if(candidate.equals(expected.title)&&destination.equals(expected.folder))return true;
             if(!me.ancal.wmdroid.sdk.WmDocumentProperties.validName(candidate)){toast(ui("올바른 이름을 입력하세요(최대 128자)."));form.nameField().requestFocus();return false;}
-            form.nameField().setEnabled(false);form.folderField().setEnabled(false);page.rename(expected,candidate,destination,()->{owner[0].dismiss();},()->{form.nameField().setEnabled(true);form.folderField().setEnabled(folderIds.length>1);});return false;
+            form.nameField().setEnabled(false);form.folderField().setEnabled(false);page.rename(expected,candidate,destination,()->{done[0]=true;owner[0].dismiss();},()->{form.nameField().setEnabled(true);form.folderField().setEnabled(folderIds.length>1);});return false;
         }).setOnLanguageChanged(()->{form.folderField().setChoices(page.folderNames(),form.folderIndex());form.locationField().setChoices(new String[]{ui("주 메모리")},0);}).create();
         notesPropertiesForm=form;notesPropertiesState=new Bundle();notesPropertiesState.putString("id",expected.id);notesPropertiesState.putString("title",expected.title);notesPropertiesState.putString("folder",expected.folder);notesPropertiesState.putStringArray("folder_ids",folderIds);notesPropertiesState.putLong("revision",expected.revision);notesPropertiesState.putLong("modified",expected.modified);notesPropertiesState.putLong("size",expected.size);
         show(owner[0]);form.nameField().requestFocus();if(restored==null)form.nameField().selectAll();else{int length=form.nameField().length();form.nameField().setSelection(Math.max(0,Math.min(length,restored.getInt("caret_start"))),Math.max(0,Math.min(length,restored.getInt("caret_end"))));}
@@ -1171,12 +1216,13 @@ public final class TodayActivity extends Activity {
     }
 
     private void openContacts(){
+        if(todayForeground&&reuseApplet("contacts"))return;
         ContactsPage page=new ContactsPage(this,regular,bold,accent,worker,new me.ancal.wmdroid.sdk.WmContactsView.Listener(){
             public void selected(me.ancal.wmdroid.sdk.WmContactsView.Entry entry){}
             public void open(me.ancal.wmdroid.sdk.WmContactsView.Entry entry){openContactSummary(entry.key);}
         });me.ancal.wmdroid.sdk.WmControls.localizeTree(page,UiLanguage.language(this));
         // ponytail: native write editor/account mapping is pending; Android owns new/edit transactions.
-        show(dialog("연락처",page).setCommands("새로 만들기",()->launch(new Intent(Intent.ACTION_INSERT,android.provider.ContactsContract.Contacts.CONTENT_URI)),"메뉴",()->contactsCommands(page)).setCommandMenus(false,true).create());
+        show(dialog("연락처",page).setApplet("contacts").setCommands("새로 만들기",()->launch(new Intent(Intent.ACTION_INSERT,android.provider.ContactsContract.Contacts.CONTENT_URI)),"메뉴",()->contactsCommands(page)).setCommandMenus(false,true).create());
     }
     private void contactsCommands(ContactsPage page){
         boolean denied=DeviceApi.permission(this,Manifest.permission.READ_CONTACTS)!=PackageManager.PERMISSION_GRANTED;
@@ -1193,7 +1239,7 @@ public final class TodayActivity extends Activity {
     private String pendingContactEditKey;
     private UiDialog pendingContactEditOrigin;
     private int contactEditGeneration;
-    private boolean contactSaving(){return currentDialog!=null&&currentDialog.spec.view instanceof ContactEditorPage&&((ContactEditorPage)currentDialog.spec.view).blocksOwnerCommands();}
+    private boolean contactSaving(){return !todayForeground&&currentDialog!=null&&currentDialog.spec.view instanceof ContactEditorPage&&((ContactEditorPage)currentDialog.spec.view).blocksOwnerCommands();}
     private void editContact(String key){
         try{ContactsStore.uri(key);}catch(IllegalArgumentException invalid){toast("연락처를 읽을 수 없습니다.");return;}
         if(DeviceApi.permission(this,Manifest.permission.READ_CONTACTS)!=PackageManager.PERMISSION_GRANTED){pendingContactEditKey=key;pendingContactEditOrigin=currentDialog;DeviceApi.request(this,new String[]{Manifest.permission.READ_CONTACTS},14);toast("연락처 읽기 권한을 허용하세요.");return;}
@@ -1223,7 +1269,7 @@ public final class TodayActivity extends Activity {
         me.ancal.wmdroid.sdk.WmControls.restyleTree(page,regular,bold,accent,LauncherTheme.color(this,0xffc9e7e9,prefs.getBoolean("rose",false)));
         final boolean[] cancelled={false},saved={false};final UiDialog[] owner=new UiDialog[1];
         Runnable cancel=()->{if(page.blocksOwnerCommands())return;cancelled[0]=true;page.editor.closeSubcard(false);owner[0].dismiss();};
-        owner[0]=dialog("연락처",page).setCloseIsOk().setOnBack(cancel).setCloseValidator(()->{
+        owner[0]=dialog("연락처",page).setApplet("contacts").setCloseIsOk().setOnBack(cancel).setCloseValidator(()->{
             if(page.blocksOwnerCommands())return false;if(cancelled[0]||saved[0])return true;
             if(page.saveOutcomeUnknown()){toast("이전 저장 결과를 확인할 수 없습니다. 연락처를 다시 열어 확인하세요.");return false;}
             final ContactEditStore.Update[] updates;final ContactEditStore.Insert[] inserts;
@@ -1253,7 +1299,7 @@ public final class TodayActivity extends Activity {
             public void editAddress(me.ancal.wmdroid.sdk.WmContactSummaryView.Address address){editContact(key);}
         });holder[0]=page;page.setOnUpdated(()->updateContactSummaryCaption(page));page.client.setOnTabChangedListener(tab->updateContactSummaryCaption(page));
         me.ancal.wmdroid.sdk.WmControls.localizeTree(page,UiLanguage.language(this));
-        show(dialog("연락처",page).setCloseIsOk().setCommands("통화",()->{
+        show(dialog("연락처",page).setApplet("contacts").setCloseIsOk().setCommands("통화",()->{
             if(page.client.selectedTab()==1||page.selectedAddress()!=null){editContact(page.contactKey);return;}
             me.ancal.wmdroid.sdk.WmContactSummaryView.Link link=page.selectedLink();if(link!=null){openContactLink(link);return;}
             me.ancal.wmdroid.sdk.WmContactSummaryView.Phone phone=page.selected();if(phone!=null){if(phone.action==me.ancal.wmdroid.sdk.WmContactSummaryView.SMS)messagePhone(phone.number);else dialPhone(phone.number);}
@@ -1293,12 +1339,13 @@ public final class TodayActivity extends Activity {
     private String phoneVoicemail="";
     private int voicemailQueryGeneration;
     private void openPhone(){
+        if(todayForeground&&reuseApplet("phone"))return;
         me.ancal.wmdroid.sdk.WmPhoneView view=new me.ancal.wmdroid.sdk.WmPhoneView(this,regular,bold,accent,new me.ancal.wmdroid.sdk.WmPhoneView.Listener(){
             public void dial(String number){dialPhone(number);}public void voicemail(){dialVoicemail();}public void speedDial(){phoneSpeedDial();}public void history(){phoneHistory();}
         });
         view.setStatus(trayPhone==null?"전화 상태 확인 필요":trayPhone.caption());view.setVoicemailAvailable(!phoneVoicemail.isEmpty());
         me.ancal.wmdroid.sdk.WmControls.localizeTree(view,UiLanguage.language(this));
-        final UiDialog[] holder=new UiDialog[1];UiDialog dialog=dialog("전화",view).setCommands("키패드 숨기기",()->{view.setKeypadVisible(!view.isKeypadVisible());holder[0].leftCaption(view.isKeypadVisible()?"키패드 숨기기":"키패드 표시");},"메뉴",()->phoneCommands(view)).setCommandMenus(false,true).create();holder[0]=dialog;show(dialog);
+        final UiDialog[] holder=new UiDialog[1];UiDialog dialog=dialog("전화",view).setApplet("phone").setCommands("키패드 숨기기",()->{view.setKeypadVisible(!view.isKeypadVisible());holder[0].leftCaption(view.isKeypadVisible()?"키패드 숨기기":"키패드 표시");},"메뉴",()->phoneCommands(view)).setCommandMenus(false,true).create();holder[0]=dialog;show(dialog);
         final int ticket=++voicemailQueryGeneration;
         try{worker.execute(()->{String value="",country="";android.telephony.TelephonyManager manager=(android.telephony.TelephonyManager)getSystemService(TELEPHONY_SERVICE);
             if(manager!=null)try{String found=manager.getVoiceMailNumber();if(found!=null)value=me.ancal.wmdroid.sdk.WmPhoneView.dialable(found);}catch(SecurityException|UnsupportedOperationException|IllegalArgumentException unavailable){}
@@ -1365,11 +1412,12 @@ public final class TodayActivity extends Activity {
     }
 
     private void openMessageNotifications(){
+        if(todayForeground&&reuseApplet("notifications"))return;
         if(Build.VERSION.SDK_INT<21||!MessageNotificationPage.available()){
-            show(new UiDialog.Builder(this).setTitle("받은 편지함 연결").setMessage(ui("Android의 메시지·메일 알림 개수를 표시합니다. 알림 접근을 직접 허용할 수 있습니다."))
+            show(new UiDialog.Builder(this).setTitle("받은 편지함 연결").setApplet("notifications").setMessage(ui("Android의 메시지·메일 알림 개수를 표시합니다. 알림 접근을 직접 허용할 수 있습니다."))
                     .setPositiveButton("알림 연결",(d,w)->launch(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))).setNegativeButton("취소",null).create());return;
         }
-        show(dialog("메시지 알림",new MessageNotificationPage(this)).create());
+        show(dialog("메시지 알림",new MessageNotificationPage(this)).setApplet("notifications").create());
     }
     private void refreshMessageNotifications(){
         // Keep NotificationListenerService and its nested model off pre-21 paths.
@@ -1405,8 +1453,9 @@ public final class TodayActivity extends Activity {
         @Override public void onWmLanguageChanged(String language){refresh();}
     }
     private void openMessages() {
+        if(todayForeground&&reuseApplet("messages"))return;
         if (prefs.getInt("message_count", -1) < 0) {
-            show(new UiDialog.Builder(this).setTitle("받은 편지함 연결").setMessage(ui("Android의 메시지·메일 알림 개수를 표시합니다. 알림 접근을 직접 허용할 수 있습니다."))
+            show(new UiDialog.Builder(this).setTitle("받은 편지함 연결").setApplet("messages").setMessage(ui("Android의 메시지·메일 알림 개수를 표시합니다. 알림 접근을 직접 허용할 수 있습니다."))
                     .setPositiveButton("알림 연결", (d, w) -> launch(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)))
                     .setNeutralButton("메시지 열기", (d, w) -> launch(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_MESSAGING))).setNegativeButton("취소", null).create());
         } else launch(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_MESSAGING));
@@ -1418,12 +1467,13 @@ public final class TodayActivity extends Activity {
     private void openCalendar() {openCalendar(null);}
     private void openCalendar(java.time.LocalDate day) {openCalendar(day,null);}
     private void openCalendar(java.time.LocalDate day,CalendarStore.Occurrence occurrence) {
+        if(todayForeground&&reuseApplet("calendar"))return;
         if(pendingAppointmentState!=null){
             for(UiDialog dialog=currentDialog;dialog!=null;dialog=dialog.previous)if(dialog==pendingAppointmentOwner){while(currentDialog!=dialog)if(!currentDialog.dismiss())return;retryAppointment(dialog);return;}
             Bundle state=new Bundle();state.putBundle("appointment_editor",pendingAppointmentState);restoreAppointment(state,true);return;
         }
         if (DeviceApi.permission(this,Manifest.permission.READ_CALENDAR) != PackageManager.PERMISSION_GRANTED) {
-            show(new UiDialog.Builder(this).setTitle("오늘의 일정").setMessage(ui("기기 캘린더의 약속을 일정·월 보기에 표시할까요?"))
+            show(new UiDialog.Builder(this).setTitle("오늘의 일정").setApplet("calendar").setMessage(ui("기기 캘린더의 약속을 일정·월 보기에 표시할까요?"))
                     .setPositiveButton("일정 연결", (d, w) -> DeviceApi.request(this,new String[]{Manifest.permission.READ_CALENDAR}, 10))
                     .setNeutralButton("캘린더 열기", (d, w) -> launch(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_CALENDAR))).setNegativeButton("취소", null).create());
         } else {
@@ -1433,7 +1483,7 @@ public final class TodayActivity extends Activity {
         }
     }
     private void showCalendar(CalendarPage view){
-            UiDialog dialog=new UiDialog.Builder(this).setTitle("일정").setView(view)
+            UiDialog dialog=new UiDialog.Builder(this).setTitle("일정").setApplet("calendar").setView(view)
                     .setCommands(view.nextViewCaption(),view::nextView,"메뉴",()->calendarCommands(view)).setCommandMenus(false,true).create();
             view.setOnViewChanged(()->dialog.leftCaption(view.nextViewCaption()));show(dialog);
     }
@@ -1506,7 +1556,7 @@ public final class TodayActivity extends Activity {
         catch(RuntimeException invalid){pendingAppointmentState=null;toast("이전 일정 초안을 복원하지 못했습니다.");return true;}
         if(!visible)return false;
         ++appointmentRequest;pendingAppointmentLoading=false;
-        UiDialog recovery=new UiDialog.Builder(this).setTitle("약속").setAuthoredMessage("이전 일정 초안이 보관되어 있습니다. 권한과 캘린더를 확인한 뒤 다시 시도하세요.").setPositiveButton("다시 시도",null).setNegativeButton("취소",null).setCloseValidator(()->{if(pendingAppointmentLoading)return false;pendingAppointmentState=null;pendingAppointmentOwner=null;return true;}).create();show(recovery);pendingAppointmentOwner=recovery;
+        UiDialog recovery=new UiDialog.Builder(this).setTitle("약속").setApplet("calendar").setAuthoredMessage("이전 일정 초안이 보관되어 있습니다. 권한과 캘린더를 확인한 뒤 다시 시도하세요.").setPositiveButton("다시 시도",null).setNegativeButton("취소",null).setCloseValidator(()->{if(pendingAppointmentLoading)return false;pendingAppointmentState=null;pendingAppointmentOwner=null;return true;}).create();show(recovery);pendingAppointmentOwner=recovery;
         recovery.getButton(UiDialog.BUTTON_POSITIVE).setOnClickListener(v->retryAppointment(recovery));retryAppointment(recovery);return true;
     }
     private void retryAppointment(UiDialog origin){
@@ -1603,7 +1653,8 @@ public final class TodayActivity extends Activity {
     private int valueLineCount(CharSequence value) { int lines=1; for(int i=0;i<value.length();i++) if(value.charAt(i)=='\n') lines++; return lines; }
 
     private void help() {
-        show(new UiDialog.Builder(this).setTitle("도움말").setMessage(ui("시작에서 프로그램과 설정을 엽니다.\n오늘의 소유자·작업·일정 항목을 눌러 사용합니다.")).setNegativeButton("닫기",null).create());
+        if(todayForeground&&reuseApplet("help"))return;
+        show(new UiDialog.Builder(this).setTitle("도움말").setApplet("help").setMessage(ui("시작에서 프로그램과 설정을 엽니다.\n오늘의 소유자·작업·일정 항목을 눌러 사용합니다.")).setNegativeButton("닫기",null).create());
     }
 
     private void settings(){settings(0);}
@@ -1611,8 +1662,9 @@ public final class TodayActivity extends Activity {
         return new SettingsPage(this,regular,prefs.getBoolean("rose",false),this::cancelApplet,key->openApplet(()->openSetting(key)));
     }
     private void settings(int initialGroup) {
+        if(todayForeground&&reuseApplet("settings"))return;
         SettingsPage settings=settingsPage();
-        settings.select(initialGroup);show(dialog("설정",settings).setPropertySheet(null).create());
+        settings.select(initialGroup);show(dialog("설정",settings).setApplet("settings").setPropertySheet(null).create());
     }
     private boolean restoreSettingsGrid(Bundle saved){
         if(saved==null||!saved.containsKey("settings_grid"))return false;
@@ -1621,7 +1673,7 @@ public final class TodayActivity extends Activity {
             if(!(state instanceof Bundle))throw new IllegalArgumentException("Invalid Settings state");
             SettingsPage settings=settingsPage();
             settings.restoreInteractionState((Bundle)state);
-            show(dialog("설정",settings).setPropertySheet(null).create());
+            show(dialog("설정",settings).setApplet("settings").setPropertySheet(null).create());
             return true;
         }catch(RuntimeException invalid){
             toast("설정 화면을 복원하지 못했습니다.");
@@ -1879,11 +1931,12 @@ public final class TodayActivity extends Activity {
         interface Toggle { void run(UiDialog dialog, int which, boolean checked); }
         private final Builder spec;
         private UiDialog previous;
+        private String applet;
         private me.ancal.wmdroid.sdk.WmWindow window;
         private LinearLayout title;
         private me.ancal.wmdroid.sdk.WmCommandBar footer;
         private TextView positive, negative;
-        private boolean dismissed;
+        private boolean dismissed,previousTodayForeground;
         private UiDialog(Builder spec) { this.spec = spec; }
         TextView getButton(int which) { return which == BUTTON_POSITIVE ? positive : negative; }
         void leftCaption(String caption){spec.leftCaption=caption;if(positive!=null)positive.setText(spec.owner.ui(caption));}
@@ -1899,10 +1952,13 @@ public final class TodayActivity extends Activity {
             a.cancelApplet();a.closeStart();
             if(spec.onClose!=null)spec.onClose.run();
             ((android.view.inputmethod.InputMethodManager)a.getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(a.screen.getWindowToken(), 0);
+            boolean keepToday=a.todayForeground||previousTodayForeground;
             a.screen.removeView(window); a.trayBars.remove(title); a.currentDialog = previous;
+            a.todayForeground=previous!=null&&keepToday;
+            if(previous==null)a.sessionFocus=null;
             a.page = previous == null ? null : previous.window;
             for(View[] pair:a.todayRows.values())pair[0].setSelected(false);
-            if (a.page != null) { if(previous.spec.view instanceof ContactEditorPage)((ContactEditorPage)previous.spec.view).resume(); a.screen.addView(a.page, new FrameLayout.LayoutParams(-1, -1)); }
+            if (a.page != null) { if(previous.spec.view instanceof ContactEditorPage)((ContactEditorPage)previous.spec.view).resume(); a.page.setVisibility(a.todayForeground?View.INVISIBLE:View.VISIBLE); a.screen.addView(a.page, new FrameLayout.LayoutParams(-1, -1)); }
             else if(a.appearanceRefreshPending)a.buildHome();
             return true;
         }
@@ -1910,6 +1966,8 @@ public final class TodayActivity extends Activity {
         void show() {
             TodayActivity a = spec.owner; a.closeStart();
             previous = a.currentDialog;
+            applet=spec.applet!=null?spec.applet:previous==null||a.todayForeground?null:previous.applet;
+            previousTodayForeground=a.todayForeground;a.todayForeground=false;
             if(previous!=null&&previous.spec.view instanceof ContactEditorPage)((ContactEditorPage)previous.spec.view).suspend();
             if (a.page != null) a.screen.removeView(a.page);
             window = new me.ancal.wmdroid.sdk.WmWindow(a);
@@ -1969,7 +2027,7 @@ public final class TodayActivity extends Activity {
         }
         static final class Builder {
             private final TodayActivity owner;
-            private String title="", message, positive, negative, neutral;
+            private String title="", message, positive, negative, neutral,applet;
             private View view;
             private boolean propertySheet,closeIsOk,leftMenu,rightMenu,authoredMessage;
             private Runnable onClose,leftAction,rightAction,onLanguageChanged,onBack;
@@ -1981,6 +2039,7 @@ public final class TodayActivity extends Activity {
             private Toggle toggle;
             Builder(TodayActivity owner){this.owner=owner;}
             Builder setTitle(String title){this.title=title;return this;}
+            Builder setApplet(String command){applet=command;return this;}
             Builder setView(View view){this.view=view;return this;}
             Builder setCloseIsOk(){closeIsOk=true;return this;}
             Builder setPropertySheet(Runnable save){propertySheet=true;closeIsOk=true;onClose=save;return this;}

@@ -1023,5 +1023,7 @@
   "경기버스정보": "Gyeonggi Bus Information",
   "국토교통부 TAGO": "Ministry of Land, Infrastructure and Transport TAGO",
   "pwi.layout_error": "PWI layout error: %s",
-  "음력": "Lunar"
+  "음력": "Lunar",
+  "다음 시간 동안 장치를 사용하지 않으면 [오늘] 화면 표시:": "Today timeout:",
+  "%d시간": "%d hr"
 }
