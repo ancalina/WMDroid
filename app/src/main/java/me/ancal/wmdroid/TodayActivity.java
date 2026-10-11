@@ -66,6 +66,7 @@ public final class TodayActivity extends Activity {
     private final java.util.Set<String> loadingHostFonts=new java.util.HashSet<>();
     private LinearLayout fontChoices;private String pendingFontFamily;private boolean fontImportBusy;
     private boolean resourcePackBusy;private TextView resourcePackInfo;
+    private boolean updateCheckBusy;
     private final java.util.Set<String> loadingFontPreviews=new java.util.HashSet<>(),failedFontPreviews=new java.util.HashSet<>();
     private TodayDateView date;
     private TodayModules modules;
@@ -1707,6 +1708,7 @@ public final class TodayActivity extends Activity {
                 case "theme":themeSettings();break;
                 case "resource_pack":resourcePackSettings();break;
                 case "about":show(new UiDialog.Builder(this).setTitle("정보").setMessage(ui("WMDroid")).create());break;
+                case "updates":checkUpdates();break;
                 case "wireless":showStatus(0);break;
                 case "wifi":launch(new Intent(Settings.ACTION_WIFI_SETTINGS));break;
                 case "bluetooth":launch(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS));break;
@@ -1724,7 +1726,28 @@ public final class TodayActivity extends Activity {
         for(String[] group:groups){TextView header=authoredText(group[0]);header.setPadding(8,0,8,0);me.ancal.wmdroid.sdk.WmControls.faceBackground(header,LauncherTheme.selection(this,false));rows.addView(header,new LinearLayout.LayoutParams(-1,36));
             for(int i=1;i<group.length;i++){String key=group[i];TextView entry=authoredText(names.get(key));ClassicUi.entry(entry,prefs.getBoolean("rose",false));entry.setPadding(16,0,16,0);entry.setOnClickListener(v->openApplet(()->openSetting(key)));rows.addView(entry,new LinearLayout.LayoutParams(-1,44));}
         }
+        TextView updates=authoredText("업데이트 확인");ClassicUi.entry(updates,prefs.getBoolean("rose",false));updates.setPadding(16,0,16,0);updates.setOnClickListener(v->checkUpdates());rows.addView(updates,new LinearLayout.LayoutParams(-1,44));
         show(dialog("WMDroid",new ClassicScrollView(this,rows)).setPropertySheet(null).create());
+    }
+    private void checkUpdates(){
+        if(updateCheckBusy||destroyed)return;
+        closeStart();startMenu=surface();final FrameLayout overlay=startMenu;overlay.setOnClickListener(v->closeStart());
+        LinearLayout panel=column();panel.setPadding(16,12,16,12);
+        TextView message=authoredText("확인 중…");panel.addView(message,new LinearLayout.LayoutParams(-1,-2));
+        int width=444,anchor=40,left=me.ancal.wmdroid.sdk.WmPopup.leftForAnchor(width,anchor,Math.max(480,screen.getWidth()));
+        FrameLayout.LayoutParams position=new FrameLayout.LayoutParams(width,-2);position.leftMargin=left;overlay.addView(popupBubble("업데이트 확인",anchor-left,panel),position);
+        FrameLayout.LayoutParams frame=new FrameLayout.LayoutParams(-1,-1);frame.topMargin=52;screen.addView(overlay,frame);if(pointer!=null)pointer.bringToFront();
+        updateCheckBusy=true;
+        worker.execute(()->{
+            LauncherUpdates.Result result=null;boolean failed=false;
+            try{result=LauncherUpdates.check(getPackageManager().getPackageInfo(getPackageName(),0).versionName);}catch(IOException|PackageManager.NameNotFoundException|RuntimeException unavailable){failed=true;}
+            final LauncherUpdates.Result release=result;final boolean error=failed;
+            handler.post(()->{
+                updateCheckBusy=false;if(destroyed||startMenu!=overlay)return;
+                message.setText(error?ui("업데이트를 확인할 수 없습니다."):release==null?ui("공개된 릴리스가 없습니다."):release.newer?UiLanguage.format(this,"새 버전: %s",release.version):ui("최신 버전을 사용 중입니다."));
+                if(release!=null&&release.newer){TextView open=authoredText("릴리스 열기");ClassicUi.button(open,false);open.setOnClickListener(v->{closeStart();launch(new Intent(Intent.ACTION_VIEW,Uri.parse(release.url)));});panel.addView(open,new LinearLayout.LayoutParams(-1,44));}
+            });
+        });
     }
     private void appIconSettings(){
         LinearLayout panel=column();panel.setPadding(8,8,8,0);

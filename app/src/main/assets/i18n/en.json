@@ -1025,5 +1025,12 @@
   "pwi.layout_error": "PWI layout error: %s",
   "음력": "Lunar",
   "다음 시간 동안 장치를 사용하지 않으면 [오늘] 화면 표시:": "Today timeout:",
-  "%d시간": "%d hr"
+  "%d시간": "%d hr",
+  "업데이트 확인": "Check for updates",
+  "확인 중…": "Checking…",
+  "최신 버전을 사용 중입니다.": "You are using the latest version.",
+  "새 버전: %s": "New version: %s",
+  "릴리스 열기": "Open release",
+  "업데이트를 확인할 수 없습니다.": "Cannot check for updates.",
+  "공개된 릴리스가 없습니다.": "No public release is available."
 }
