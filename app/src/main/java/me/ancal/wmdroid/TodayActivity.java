@@ -125,7 +125,11 @@ public final class TodayActivity extends Activity {
     };
     private final BroadcastReceiver updates = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
-            refresh();String action=intent.getAction();
+            String action=intent.getAction();
+            if(Intent.ACTION_PACKAGE_ADDED.equals(action)||Intent.ACTION_PACKAGE_REMOVED.equals(action)||Intent.ACTION_PACKAGE_CHANGED.equals(action)||Intent.ACTION_PACKAGE_REPLACED.equals(action)){
+                preparedStart=null;if(modules!=null)modules.refresh();return;
+            }
+            refresh();
             if(MessageNotifications.CHANGED.equals(action))refreshMessageNotifications();
             if(Intent.ACTION_TIME_TICK.equals(action)||Intent.ACTION_TIME_CHANGED.equals(action)||Intent.ACTION_TIMEZONE_CHANGED.equals(action)||Intent.ACTION_DATE_CHANGED.equals(action)){
                 loadCalendar();
@@ -164,8 +168,9 @@ public final class TodayActivity extends Activity {
         if (!receiving) {
             IntentFilter filter = new IntentFilter(MessageNotifications.CHANGED);
             filter.addAction(Intent.ACTION_BATTERY_CHANGED);filter.addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED);filter.addAction(android.media.AudioManager.RINGER_MODE_CHANGED_ACTION);filter.addAction(ConnectivityManager.CONNECTIVITY_ACTION);filter.addAction(android.net.wifi.WifiManager.NETWORK_STATE_CHANGED_ACTION);filter.addAction(android.net.wifi.WifiManager.SUPPLICANT_STATE_CHANGED_ACTION);filter.addAction(Intent.ACTION_TIME_TICK);filter.addAction(Intent.ACTION_TIME_CHANGED);filter.addAction(Intent.ACTION_TIMEZONE_CHANGED);filter.addAction(Intent.ACTION_DATE_CHANGED);
-            if (Build.VERSION.SDK_INT >= 33) registerReceiver(updates, filter, Context.RECEIVER_NOT_EXPORTED);
-            else registerReceiver(updates, filter);
+            IntentFilter packages=new IntentFilter();packages.addAction(Intent.ACTION_PACKAGE_ADDED);packages.addAction(Intent.ACTION_PACKAGE_REMOVED);packages.addAction(Intent.ACTION_PACKAGE_CHANGED);packages.addAction(Intent.ACTION_PACKAGE_REPLACED);packages.addDataScheme("package");
+            if (Build.VERSION.SDK_INT >= 33) {registerReceiver(updates, filter, Context.RECEIVER_NOT_EXPORTED);registerReceiver(updates,packages,Context.RECEIVER_NOT_EXPORTED);}
+            else {registerReceiver(updates, filter);registerReceiver(updates,packages);}
             receiving = true;
         }
         handler.removeCallbacks(tick); tick.run();refreshMessageNotifications();

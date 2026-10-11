@@ -7,7 +7,8 @@ The SDK retains its Apache License 2.0 terms when included in the launcher.
 Bundled Gulim font:
 https://github.com/googlefonts/gulim
 SIL Open Font License 1.1. The font's OFL.txt and AUTHORS.txt are included
-under sdk/src/main/assets/fonts/gulim/ and in generated APK/AAR assets.
+in the separate SDK source under sdk/src/main/assets/fonts/gulim/ and in
+generated APK/AAR assets under assets/fonts/gulim/.
 
 APK builds use AndroidX multidex 2.0.1 and desugar_jdk_libs 2.1.5.
 Collected license and attribution texts are in third_party/ and APK assets
