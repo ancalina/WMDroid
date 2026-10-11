@@ -1,0 +1,90 @@
+{
+  "schema": 1,
+  "scope": "Pinned dependency license and notice payload only; no legal clearance, exhaustive notice inventory or corresponding-source completion is asserted.",
+  "gpl_release_ready": false,
+  "dependencies": [
+    {
+      "coordinate": "com.android.tools:desugar_jdk_libs:2.1.5",
+      "version": "2.1.5",
+      "artifact_sha256": "d8044befae095781b9a80bf1faa92edc30382d75d437476784c1bf991598a976",
+      "pom_url": "https://dl.google.com/dl/android/maven2/com/android/tools/desugar_jdk_libs/2.1.5/desugar_jdk_libs-2.1.5.pom",
+      "declared_license": "GNU General Public License, version 2, with the Classpath Exception",
+      "runtime_notice_payload": true,
+      "notice_files": [
+        {
+          "path": "third_party/desugar_jdk_libs-2.1.5/LICENSE",
+          "sha256": "4b9abebc4338048a7c2dc184e9f800deb349366bdf28eb23c2677a77b4c87726",
+          "upstream_url": "https://github.com/google/desugar_jdk_libs/blob/73170c345e6a762fc6a1f0301bb15218850023ef/LICENSE"
+        },
+        {
+          "path": "third_party/desugar_jdk_libs-2.1.5/ADDITIONAL_LICENSE_INFO",
+          "sha256": "a69bce275ba7a3570af6579cb0f55682cd75fedfcd49e0e8e9022270c447c916",
+          "upstream_url": "https://github.com/google/desugar_jdk_libs/blob/73170c345e6a762fc6a1f0301bb15218850023ef/ADDITIONAL_LICENSE_INFO"
+        },
+        {
+          "path": "third_party/desugar_jdk_libs-2.1.5/ASSEMBLY_EXCEPTION",
+          "sha256": "a44eb7b5caf5534c6ef536b21edb40b4d6babf91bf97d9d45596868618b2c6fb",
+          "upstream_url": "https://github.com/google/desugar_jdk_libs/blob/73170c345e6a762fc6a1f0301bb15218850023ef/ASSEMBLY_EXCEPTION"
+        },
+        {
+          "path": "third_party/desugar_jdk_libs-2.1.5/LocalDate-NOTICE.txt",
+          "sha256": "cd38b88d7358134a74d6d7b355bff58dc815d299fa8126b67824115ec8173014",
+          "upstream_url": "https://github.com/google/desugar_jdk_libs/blob/73170c345e6a762fc6a1f0301bb15218850023ef/jdk11/src/java.base/share/classes/java/time/LocalDate.java",
+          "scope": "Observed LocalDate header notice; not an exhaustive per-file notice inventory."
+        }
+      ],
+      "source_correspondence": {
+        "status": "unconfirmed_published_binary_correspondence",
+        "candidate_preparation_commit": "73170c345e6a762fc6a1f0301bb15218850023ef",
+        "candidate_url": "https://github.com/google/desugar_jdk_libs/tree/73170c345e6a762fc6a1f0301bb15218850023ef",
+        "evidence_limit": "Version-declaration and preparation-commit correspondence confirmed; exact published JAR build revision/bytecode-source correspondence NOT confirmed."
+      }
+    },
+    {
+      "coordinate": "androidx.multidex:multidex:2.0.1",
+      "version": "2.0.1",
+      "artifact_sha256": "42dd32ff9f97f85771b82a20003a8d70f68ab7b4ba328964312ce0732693db09",
+      "pom_url": "https://dl.google.com/dl/android/maven2/androidx/multidex/multidex/2.0.1/multidex-2.0.1.pom",
+      "declared_license": "Apache License 2.0",
+      "runtime_notice_payload": true,
+      "notice_files": [
+        {
+          "path": "third_party/androidx_multidex-2.0.1/LICENSE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "upstream_url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
+        },
+        {
+          "path": "third_party/androidx_multidex-2.0.1/NOTICE",
+          "sha256": "e92734ddb0bb255c30cbb16c6a65eaee18fc01694ff149012abde58b8002d7db",
+          "upstream_url": "https://android.googlesource.com/platform/frameworks/multidex/+/b9aef4192f9584a1e708df6e516fd10febaeb1f5/NOTICE"
+        }
+      ],
+      "source_correspondence": {
+        "status": "versioned_sources_match_pinned_snapshot_publication_commit_unconfirmed",
+        "versioned_sources_url": "https://dl.google.com/dl/android/maven2/androidx/multidex/multidex/2.0.1/multidex-2.0.1-sources.jar",
+        "pinned_snapshot_url": "https://android.googlesource.com/platform/frameworks/multidex/+/b9aef4192f9584a1e708df6e516fd10febaeb1f5/",
+        "evidence_limit": "All four Java source files in the officially versioned sources JAR are byte-identical to this pinned AOSP snapshot. This proves source-file correspondence, not that this was the publication build commit."
+      }
+    },
+    {
+      "coordinate": "com.android.tools:desugar_jdk_libs_configuration:2.1.5",
+      "version": "2.1.5",
+      "artifact_sha256": "7bc9051b3a1ec19806311dcb6aa9b9ba7ef9c22caa6f4810da55bde285fb7770",
+      "pom_url": "https://dl.google.com/dl/android/maven2/com/android/tools/desugar_jdk_libs_configuration/2.1.5/desugar_jdk_libs_configuration-2.1.5.pom",
+      "declared_license": "BSD-3-Clause",
+      "runtime_notice_payload": true,
+      "notice_files": [
+        {
+          "path": "third_party/desugar_jdk_libs_configuration-2.1.5/LICENSE",
+          "sha256": "68834f116f8ff545f05d14753357b620748156d60ee36b26beab4cb3f317efe4",
+          "origin": "Exact LICENSE bytes embedded in the pinned configuration JAR."
+        }
+      ],
+      "source_correspondence": {
+        "status": "exact_revision_unconfirmed",
+        "upstream_repository": "https://r8.googlesource.com/r8",
+        "evidence_limit": "POM provides repository but not exact version-specific source revision. No exact revision asserted."
+      }
+    }
+  ]
+}

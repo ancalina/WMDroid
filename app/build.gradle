@@ -1,0 +1,53 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'me.ancal.wmdroid'
+    sourceSets.main.assets.srcDir layout.buildDirectory.dir('generated/dependency-notices')
+    compileSdk 35
+    buildTypes {
+        debug { debuggable true }
+        release { debuggable false }
+    }
+    defaultConfig {
+        applicationId 'me.ancal.wmdroid'
+        minSdk 14
+        multiDexEnabled true
+        targetSdk 35
+        versionCode 1
+        versionName '0.1.0'
+    }
+    compileOptions { coreLibraryDesugaringEnabled true; sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+
+def validateDependencyNotices = tasks.register('validateDependencyNotices', Exec) {
+    workingDir rootProject.projectDir
+    commandLine 'python3', 'tools/dependency_notices.py'
+}
+def dependencyNotices = tasks.register('prepareDependencyNotices', Sync) {
+    dependsOn validateDependencyNotices
+    from(rootProject.projectDir) {
+        include 'third_party/dependencies.json'
+        include 'third_party/desugar_jdk_libs-2.1.5/LICENSE'
+        include 'third_party/desugar_jdk_libs-2.1.5/ADDITIONAL_LICENSE_INFO'
+        include 'third_party/desugar_jdk_libs-2.1.5/ASSEMBLY_EXCEPTION'
+        include 'third_party/desugar_jdk_libs-2.1.5/LocalDate-NOTICE.txt'
+        include 'third_party/androidx_multidex-2.0.1/LICENSE'
+        include 'third_party/androidx_multidex-2.0.1/NOTICE'
+        include 'third_party/desugar_jdk_libs_configuration-2.1.5/LICENSE'
+    }
+    into layout.buildDirectory.dir('generated/dependency-notices')
+}
+tasks.named('preBuild').configure { dependsOn dependencyNotices }
+
+dependencies {
+    implementation files(rootProject.file('libs/WMDroid-sdk.aar'))
+    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.5"
+    implementation "androidx.multidex:multidex:2.0.1"
+}
+
+tasks.named('preBuild').configure {
+    doFirst {
+        if (!rootProject.file('libs/WMDroid-sdk.aar').isFile()) {
+            throw new GradleException('Place the published SDK AAR in libs/WMDroid-sdk.aar')
+        }
+    }
+}

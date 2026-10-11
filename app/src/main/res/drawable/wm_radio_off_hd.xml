@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="32dp" android:height="32dp"
+    android:viewportWidth="32" android:viewportHeight="32">
+    <!--
+      Phone/radio off, group4674: manually drawn from the visually inspected 32px 1bpp ICO.
+      Source: analysis/resources/pe_modules/shellres.192.dll/assets/00492_T14_N4674_L1033.ico
+      SHA256: 06dace23413d35159e7b4712116dcd6aa5640bbbe2f4996492bb38702e311f3b
+      Geometry matches design/icons/radio_off-hd.svg; native alpha bounds [1,1,31,31).
+      Diagonals are continuous for HiDPI; no automatic tracing or generative artwork.
+      SIM-missing group4686 remains a separate existing resource.
+    -->
+    <path android:pathData="M1,1H21V5.5L13,13.5V23H9V13.5L1,5.5Z M6.5,5H15.5L11,9.5Z"
+        android:fillColor="#ffffff" android:fillType="evenOdd" />
+    <path android:pathData="M18.5,17H19.5L24,21.5L28.5,17H29.5L31,18.5V19.5L26.5,24L31,28.5V29.5L29.5,31H28.5L24,26.5L19.5,31H18.5L17,29.5V28.5L21.5,24L17,19.5V18.5Z"
+        android:fillColor="#ffffff" />
+</vector>

@@ -1,0 +1,22 @@
+WMDroid
+Copyright 2026 WMDroid contributors.
+
+Project license scope is defined in LICENSES.md.
+The SDK retains its Apache License 2.0 terms when included in the launcher.
+
+Bundled Gulim font:
+https://github.com/googlefonts/gulim
+SIL Open Font License 1.1. The font's OFL.txt and AUTHORS.txt are included
+under sdk/src/main/assets/fonts/gulim/ and in generated APK/AAR assets.
+
+APK builds use AndroidX multidex 2.0.1 and desugar_jdk_libs 2.1.5.
+Collected license and attribution texts are in third_party/ and APK assets
+under assets/third_party/, including the configuration library's BSD license.
+third_party/dependencies.json records upstream sources and known
+correspondence limits.
+Exact source revisions, corresponding-source requirements and complete
+per-file notices are still being verified. This is not a completed
+third-party license inventory.
+
+Microsoft and OEM resource packs are user-supplied files. The project
+licenses grant no rights to those files. Public artifacts exclude them.
