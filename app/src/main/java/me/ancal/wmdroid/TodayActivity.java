@@ -1884,9 +1884,14 @@ public final class TodayActivity extends Activity {
         show(dialog("연결 모듈",panel).setPropertySheet(null).create());
     }
     private void languageSettings(){
-        String[] languages=me.ancal.wmdroid.sdk.WmStrings.languages(this),names=new String[languages.length];
-        for(int i=0;i<languages.length;i++){Locale locale=me.ancal.wmdroid.sdk.WmStrings.locale(languages[i]);names[i]=locale.getDisplayName(locale);}
-        show(new UiDialog.Builder(this).setTitle("언어").setItems(names,(d,n)->{prefs.edit().putString("language",languages[n]).apply();modules.refresh();}).create());
+        String[] languages=me.ancal.wmdroid.sdk.WmStrings.languages(this),names=new String[languages.length+1];
+        names[0]=ui("시스템 언어");
+        for(int i=0;i<languages.length;i++){Locale locale=me.ancal.wmdroid.sdk.WmStrings.locale(languages[i]);names[i+1]=locale.getDisplayName(locale);}
+        show(new UiDialog.Builder(this).setTitle("언어").setItems(names,(d,n)->{
+            if(n==0)prefs.edit().remove("language").apply();
+            else prefs.edit().putString("language",languages[n-1]).apply();
+            modules.refresh();
+        }).create());
     }
     private void backlight(){show(dialog("조명",new BrightnessPage(this,prefs,regular)).setPropertySheet(null).create());}
     private void displaySettings(){
