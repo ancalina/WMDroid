@@ -1,6 +1,7 @@
 package me.ancal.wmdroid;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.os.Build;
 import java.util.Locale;
@@ -9,6 +10,12 @@ import me.ancal.wmdroid.sdk.WmStrings;
 /** App-authored UI only. Exact catalog keys never rewrite user or provider data. */
 final class UiLanguage {
     private UiLanguage() {}
+
+    static void migrate(Context context){
+        SharedPreferences prefs=context.getSharedPreferences("today",Context.MODE_PRIVATE);
+        if(!prefs.getBoolean("language_system_default_v1",false))
+            prefs.edit().remove("language").putBoolean("language_system_default_v1",true).apply();
+    }
 
     static String language(Context context) {
         String selected=context.getSharedPreferences("today",Context.MODE_PRIVATE).getString("language",null);

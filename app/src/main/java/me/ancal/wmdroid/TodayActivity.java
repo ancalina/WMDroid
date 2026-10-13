@@ -149,6 +149,7 @@ public final class TodayActivity extends Activity {
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);pendingFontFamily=saved==null?null:saved.getString("font_import_family");
         prefs = getSharedPreferences("today", MODE_PRIVATE);
+        UiLanguage.migrate(this);
         if(saved!=null){todaySession.restore(saved.getBundle("today_session"));sessionPowerPending=saved.getBoolean("today_session_power_pending",false);ownerWakePending=saved.getBoolean("owner_wake_pending",false);}
         // Retire the alternate theme without changing the user's custom accent.
         if(prefs.getBoolean("rose",false))prefs.edit().putBoolean("rose",false).apply();

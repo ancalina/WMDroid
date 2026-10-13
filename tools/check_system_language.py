@@ -27,8 +27,13 @@ public LocaleList getLocales(){return locales;}}''',
 public class Resources {public Configuration config=new Configuration();
 public Configuration getConfiguration(){return config;}}''',
         'android/content/SharedPreferences.java': '''package android.content;
-public class SharedPreferences {public String value;
-public String getString(String key,String fallback){return value==null?fallback:value;}}''',
+public class SharedPreferences {public String value;public boolean migrated;
+public String getString(String key,String fallback){return value==null?fallback:value;}
+public boolean getBoolean(String key,boolean fallback){return migrated;}
+public Editor edit(){return new Editor();}
+public class Editor {public Editor remove(String key){value=null;return this;}
+public Editor putBoolean(String key,boolean v){migrated=v;return this;}
+public void apply(){}}}''',
         'android/content/Context.java': '''package android.content;
 import android.content.res.Resources;
 public class Context {public static final int MODE_PRIVATE=0;
@@ -49,6 +54,10 @@ public class SystemLanguageCheck {
 static void check(Context c,String expected){String actual=UiLanguage.language(c);
 if(!expected.equals(actual))throw new AssertionError(expected+" != "+actual);}
 public static void main(String[] args){Context c=new Context();
+c.prefs.value="ko";UiLanguage.migrate(c);
+if(c.prefs.value!=null||!c.prefs.migrated)throw new AssertionError("Legacy preference not reset");
+c.prefs.value="en";UiLanguage.migrate(c);
+if(!"en".equals(c.prefs.value))throw new AssertionError("Migration reset repeated");
 for(int api:new int[]{14,21,23,24,35}){Build.VERSION.SDK_INT=api;
 for(String tag:new String[]{"ko-KR","en-US","en-GB","fr-FR"}){
 Locale locale=Locale.forLanguageTag(tag);c.resources.config.locale=locale;
@@ -64,7 +73,7 @@ WmStrings.available=new String[]{"ko","en","en-gb"};
 c.resources.config.locales.values=new Locale[]{Locale.UK};check(c,"en-gb");
 c.resources.config.locales.values=new Locale[]{};check(c,"en");
 Build.VERSION.SDK_INT=14;c.resources.config.locale=null;check(c,"en");
-System.out.println("PASS: system locales, regional tags, priority, fallback, explicit override, API 14/21/23/24/35");}}
+System.out.println("PASS: one-time preference reset, system locales, regional tags, priority, fallback, explicit override, API 14/21/23/24/35");}}
 ''',
     }
     (ROOT / 'build').mkdir(exist_ok=True)
