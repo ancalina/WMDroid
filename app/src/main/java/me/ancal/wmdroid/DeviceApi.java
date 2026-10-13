@@ -13,7 +13,17 @@ import android.provider.Settings;
 final class DeviceApi {
     static boolean airplane(Context c){return me.ancal.wmdroid.sdk.WmDevice.airplane(c);}
     static int permission(Context c,String name){return Build.VERSION.SDK_INT>=23?c.checkSelfPermission(name):c.checkCallingOrSelfPermission(name);}
-    static void request(Activity a,String[] names,int code){if(Build.VERSION.SDK_INT>=23)a.requestPermissions(names,code);}
+    static void request(Activity a,String[] names,int code){
+        if(Build.VERSION.SDK_INT<23)return;
+        if(Build.VERSION.SDK_INT>=31){
+            java.util.List<String> requested=java.util.Arrays.asList(names);
+            if(requested.contains(android.Manifest.permission.ACCESS_FINE_LOCATION)&&!requested.contains(android.Manifest.permission.ACCESS_COARSE_LOCATION)){
+                names=java.util.Arrays.copyOf(names,names.length+1);
+                names[names.length-1]=android.Manifest.permission.ACCESS_COARSE_LOCATION;
+            }
+        }
+        a.requestPermissions(names,code);
+    }
     static boolean canWrite(Context c){return Build.VERSION.SDK_INT>=23?Settings.System.canWrite(c):permission(c,android.Manifest.permission.WRITE_SETTINGS)==PackageManager.PERMISSION_GRANTED;}
     static final class Network {
         final boolean connected,wifi,cellular,ethernet,validated;
