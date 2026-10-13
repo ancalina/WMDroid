@@ -1740,7 +1740,7 @@ public final class TodayActivity extends Activity {
         if(!updateCheckBusy&&LauncherUpdates.due(System.currentTimeMillis(),prefs.getLong("update_last_check",0)))checkUpdates(true);
     }
     private void showPendingUpdate(){
-        if(!resumed||destroyed||startMenu!=null||currentDialog!=null||pendingUpdate==null)return;
+        if(!resumed||destroyed||startMenu!=null||pendingApplet!=null||(currentDialog!=null&&!todayForeground)||pendingUpdate==null)return;
         LauncherUpdates.Result release=pendingUpdate;pendingUpdate=null;
         if(!LauncherUpdates.shouldNotify(release,prefs.getString("update_notified_version",null)))return;
         updatePopup(UiLanguage.format(this,"새 버전: %s",release.version),release);

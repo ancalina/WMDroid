@@ -48,8 +48,8 @@ class TestNetwork {static LauncherUpdates.Result result;static boolean fail;
 static LauncherUpdates.Result check(String v)throws IOException {if(fail)throw new IOException("offline");return result;}}
 class UiLanguage {static String format(Object c,String s,Object... args){return String.format(s,args);}}
 public class HourlyUpdateCheck {
-boolean resumed,destroyed,updateCheckBusy;FrameLayout startMenu,updateOverlay;Object currentDialog;
-TextView updateMessage;LauncherUpdates.Result pendingUpdate;Prefs prefs=new Prefs();
+boolean resumed,destroyed,updateCheckBusy,todayForeground;FrameLayout startMenu,updateOverlay;Object currentDialog;
+Runnable pendingApplet;TextView updateMessage;LauncherUpdates.Result pendingUpdate;Prefs prefs=new Prefs();
 Jobs updateWorker=new Jobs(),handler=new Jobs();int popups,buttons;
 String ui(String s){return s;}String getPackageName(){return "me.ancal.wmdroid";}
 PackageManager getPackageManager(){return new PackageManager();}
@@ -84,6 +84,8 @@ h=new HourlyUpdateCheck();h.resumed=true;h.currentDialog=new Object();h.checkAut
 expect(h.pendingUpdate==newer&&h.popups==0,"applet not interrupted");
 h.currentDialog=null;h.startMenu=new FrameLayout();h.showPendingUpdate();expect(h.popups==0,"menu not interrupted");
 h.startMenu=null;h.showPendingUpdate();expect(h.popups==1&&h.pendingUpdate==null,"notice when home idle");
+h=new HourlyUpdateCheck();h.resumed=true;h.currentDialog=new Object();h.todayForeground=true;h.pendingUpdate=newer;h.showPendingUpdate();expect(h.popups==1,"hidden applet must not block Today notice");
+h=new HourlyUpdateCheck();h.resumed=true;h.pendingApplet=()->{};h.pendingUpdate=newer;h.showPendingUpdate();expect(h.popups==0&&h.pendingUpdate==newer,"opening applet must not be interrupted");h.pendingApplet=null;h.showPendingUpdate();expect(h.popups==1,"notice after pending action ends");
 h=new HourlyUpdateCheck();h.resumed=true;h.checkAutomaticUpdates();h.resumed=false;h.finish();
 expect(h.popups==0&&h.pendingUpdate==newer,"background no popup");h.resumed=true;h.checkAutomaticUpdates();expect(h.popups==1&&h.updateWorker.jobs.isEmpty(),"resume shows queued notice without recheck");
 h=new HourlyUpdateCheck();h.resumed=true;TestNetwork.fail=true;h.checkAutomaticUpdates();h.finish();
@@ -92,7 +94,7 @@ h=new HourlyUpdateCheck();h.resumed=true;h.checkAutomaticUpdates();h.checkUpdate
 h=new HourlyUpdateCheck();h.resumed=true;TestNetwork.result=null;h.checkAutomaticUpdates();h.finish();expect(h.popups==0,"missing release silent");
 h=new HourlyUpdateCheck();h.resumed=true;TestNetwork.result=newer;h.checkAutomaticUpdates();h.destroyed=true;h.finish();expect(h.popups==0,"destroyed no UI");
 expect(LauncherUpdates.compareVersions("v0.1.4","0.1.3")==1,"version comparison retained");
-System.out.println("PASS: hourly boundary, clock rollback, saved deadline, worker/dedupe, manual joining, silent failure, idle popup, pause/resume/destroy, one notice per version");
+System.out.println("PASS: hourly boundary, clock rollback, saved deadline, worker/dedupe, manual joining, silent failure, idle popup, hidden/opening applets, pause/resume/destroy, one notice per version");
 }}
 '''.replace('METHODS', methods)
     with tempfile.TemporaryDirectory(prefix='hourly-updates-') as folder:
