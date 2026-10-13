@@ -67,6 +67,9 @@ public final class TodayActivity extends Activity {
     private LinearLayout fontChoices;private String pendingFontFamily;private boolean fontImportBusy;
     private boolean resourcePackBusy;private TextView resourcePackInfo;
     private boolean updateCheckBusy;
+    private TextView updateMessage;private FrameLayout updateOverlay;
+    private LauncherUpdates.Result pendingUpdate;
+    private final ExecutorService updateWorker=Executors.newSingleThreadExecutor();
     private final java.util.Set<String> loadingFontPreviews=new java.util.HashSet<>(),failedFontPreviews=new java.util.HashSet<>();
     private TodayDateView date;
     private TodayModules modules;
@@ -121,6 +124,7 @@ public final class TodayActivity extends Activity {
     private boolean pendingAppearance,pendingLanguage,rebuildingAppearance;
     private final Runnable applySettings=()->applyLiveSettings();
     private final SharedPreferences.OnSharedPreferenceChangeListener settingsChanged=(store,key)->{
+        if(key!=null&&key.startsWith("update_"))return;
         if(key!=null){pendingAppearance|=key.startsWith("theme_")||key.startsWith("font_")||key.startsWith("item_")||key.startsWith("module_")||key.equals("today_order")||key.equals("wallpaper_tint")||key.equals("rose")||key.equals("language")||key.equals("title_clock")||key.equals("analog_clock");pendingLanguage|=key.equals("language");}
         if("calendar_flags".equals(key))loadCalendar();
         if("tasks".equals(key))TaskReminders.schedule(this);
@@ -129,7 +133,7 @@ public final class TodayActivity extends Activity {
             getContentResolver().notifyChange(me.ancal.wmdroid.sdk.WmShell.STATE,null);
     };
     private final Runnable tick = new Runnable() {
-        @Override public void run() { refresh(); loadCalendar(); if(modules!=null)modules.refresh();handler.postDelayed(this,30000); }
+        @Override public void run() { checkAutomaticUpdates(); refresh(); loadCalendar(); if(modules!=null)modules.refresh();handler.postDelayed(this,30000); }
     };
     private final BroadcastReceiver updates = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
@@ -203,7 +207,7 @@ public final class TodayActivity extends Activity {
     }
 
     private boolean destroyed;
-    @Override protected void onDestroy() { destroyed=true;for(UiDialog d=currentDialog;d!=null;d=d.previous)if(d.spec.view instanceof me.ancal.wmdroid.sdk.WmBrowserView)((me.ancal.wmdroid.sdk.WmBrowserView)d.spec.view).close();for(UiDialog d=currentDialog;d!=null;d=d.previous)if(d.spec.view instanceof me.ancal.wmdroid.sdk.WmMediaView)((me.ancal.wmdroid.sdk.WmMediaView)d.spec.view).close();mediaPicker=null;prefs.unregisterOnSharedPreferenceChangeListener(settingsChanged);handler.removeCallbacks(applySettings); if(ownerWakeListening)unregisterReceiver(ownerWake);worker.shutdownNow();if(modules!=null)modules.close();super.onDestroy(); }
+    @Override protected void onDestroy() { destroyed=true;for(UiDialog d=currentDialog;d!=null;d=d.previous)if(d.spec.view instanceof me.ancal.wmdroid.sdk.WmBrowserView)((me.ancal.wmdroid.sdk.WmBrowserView)d.spec.view).close();for(UiDialog d=currentDialog;d!=null;d=d.previous)if(d.spec.view instanceof me.ancal.wmdroid.sdk.WmMediaView)((me.ancal.wmdroid.sdk.WmMediaView)d.spec.view).close();mediaPicker=null;prefs.unregisterOnSharedPreferenceChangeListener(settingsChanged);handler.removeCallbacks(applySettings); if(ownerWakeListening)unregisterReceiver(ownerWake);worker.shutdownNow();updateWorker.shutdownNow();if(modules!=null)modules.close();super.onDestroy(); }
     @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent);closeStart();if(me.ancal.wmdroid.sdk.WmShell.ACTION.equals(intent.getAction())){String command=intent.getStringExtra(me.ancal.wmdroid.sdk.WmShell.COMMAND);if(command!=null)runShellCommand(command);}else foregroundTodaySession(); }
     private void handleShellCommand(Intent intent){
         if(!me.ancal.wmdroid.sdk.WmShell.ACTION.equals(intent.getAction()))return;
@@ -1730,23 +1734,52 @@ public final class TodayActivity extends Activity {
         TextView updates=authoredText("업데이트 확인");ClassicUi.entry(updates,prefs.getBoolean("rose",false));updates.setPadding(16,0,16,0);updates.setOnClickListener(v->checkUpdates());rows.addView(updates,new LinearLayout.LayoutParams(-1,44));
         show(dialog("WMDroid",new ClassicScrollView(this,rows)).setPropertySheet(null).create());
     }
-    private void checkUpdates(){
-        if(updateCheckBusy||destroyed)return;
+    private void checkAutomaticUpdates(){
+        if(!resumed||destroyed)return;
+        showPendingUpdate();
+        if(!updateCheckBusy&&LauncherUpdates.due(System.currentTimeMillis(),prefs.getLong("update_last_check",0)))checkUpdates(true);
+    }
+    private void showPendingUpdate(){
+        if(!resumed||destroyed||startMenu!=null||currentDialog!=null||pendingUpdate==null)return;
+        LauncherUpdates.Result release=pendingUpdate;pendingUpdate=null;
+        if(!LauncherUpdates.shouldNotify(release,prefs.getString("update_notified_version",null)))return;
+        updatePopup(UiLanguage.format(this,"새 버전: %s",release.version),release);
+        prefs.edit().putString("update_notified_version",release.version).apply();
+    }
+    private TextView updatePopup(String status,LauncherUpdates.Result release){
         closeStart();startMenu=surface();final FrameLayout overlay=startMenu;overlay.setOnClickListener(v->closeStart());
         LinearLayout panel=column();panel.setPadding(16,12,16,12);
-        TextView message=authoredText("확인 중…");panel.addView(message,new LinearLayout.LayoutParams(-1,-2));
+        TextView message=ClassicUi.text(this,regular,status);panel.addView(message,new LinearLayout.LayoutParams(-1,-2));
         int width=444,anchor=40,left=me.ancal.wmdroid.sdk.WmPopup.leftForAnchor(width,anchor,Math.max(480,screen.getWidth()));
         FrameLayout.LayoutParams position=new FrameLayout.LayoutParams(width,-2);position.leftMargin=left;overlay.addView(popupBubble("업데이트 확인",anchor-left,panel),position);
         FrameLayout.LayoutParams frame=new FrameLayout.LayoutParams(-1,-1);frame.topMargin=52;screen.addView(overlay,frame);if(pointer!=null)pointer.bringToFront();
+        if(release!=null)addReleaseButton(panel,release);
+        return message;
+    }
+    private void addReleaseButton(LinearLayout panel,LauncherUpdates.Result release){
+        TextView open=authoredText("릴리스 열기");ClassicUi.button(open,false);open.setOnClickListener(v->{closeStart();launch(new Intent(Intent.ACTION_VIEW,Uri.parse(release.url)));});panel.addView(open,new LinearLayout.LayoutParams(-1,44));
+    }
+    private void checkUpdates(){checkUpdates(false);}
+    private void checkUpdates(boolean automatic){
+        if(destroyed)return;
+        if(!automatic){updateMessage=updatePopup(ui("확인 중…"),null);updateOverlay=startMenu;}
+        if(updateCheckBusy)return;
         updateCheckBusy=true;
-        worker.execute(()->{
+        prefs.edit().putLong("update_last_check",System.currentTimeMillis()).apply();
+        updateWorker.execute(()->{
             LauncherUpdates.Result result=null;boolean failed=false;
             try{result=LauncherUpdates.check(getPackageManager().getPackageInfo(getPackageName(),0).versionName);}catch(IOException|PackageManager.NameNotFoundException|RuntimeException unavailable){failed=true;}
             final LauncherUpdates.Result release=result;final boolean error=failed;
             handler.post(()->{
-                updateCheckBusy=false;if(destroyed||startMenu!=overlay)return;
-                message.setText(error?ui("업데이트를 확인할 수 없습니다."):release==null?ui("공개된 릴리스가 없습니다."):release.newer?UiLanguage.format(this,"새 버전: %s",release.version):ui("최신 버전을 사용 중입니다."));
-                if(release!=null&&release.newer){TextView open=authoredText("릴리스 열기");ClassicUi.button(open,false);open.setOnClickListener(v->{closeStart();launch(new Intent(Intent.ACTION_VIEW,Uri.parse(release.url)));});panel.addView(open,new LinearLayout.LayoutParams(-1,44));}
+                updateCheckBusy=false;if(destroyed)return;
+                TextView message=updateMessage;FrameLayout overlay=updateOverlay;updateMessage=null;updateOverlay=null;
+                if(message!=null&&startMenu==overlay){
+                    message.setText(error?ui("업데이트를 확인할 수 없습니다."):release==null?ui("공개된 릴리스가 없습니다."):release.newer?UiLanguage.format(this,"새 버전: %s",release.version):ui("최신 버전을 사용 중입니다."));
+                    if(release!=null&&release.newer){addReleaseButton((LinearLayout)message.getParent(),release);prefs.edit().putString("update_notified_version",release.version).apply();}
+                }else if(automatic&&message==null){
+                    if(!error&&LauncherUpdates.shouldNotify(release,prefs.getString("update_notified_version",null)))pendingUpdate=release;
+                    showPendingUpdate();
+                }
             });
         });
     }

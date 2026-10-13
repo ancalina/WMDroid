@@ -9,13 +9,16 @@ import java.util.regex.Pattern;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/** Explicit release checks only; call from a worker, never the UI thread. */
+/** Release checks run on a worker, never the UI thread. */
 final class LauncherUpdates {
     private static final String ENDPOINT="https://api.github.com/repos/ancalina/WMDroid/releases/latest";
     private static final String RELEASES="https://github.com/ancalina/WMDroid/releases/tag/";
     private static final int LIMIT=256*1024;
     private static final Pattern VERSION=Pattern.compile("v?[0-9]{1,9}\\.[0-9]{1,9}\\.[0-9]{1,9}");
     private LauncherUpdates(){}
+    static final long CHECK_INTERVAL=60*60*1000L;
+    static boolean due(long now,long last){return last<=0||now<last||now-last>=CHECK_INTERVAL;}
+    static boolean shouldNotify(Result result,String notified){return result!=null&&result.newer&&!result.version.equals(notified);}
 
     static final class Result {
         final String version,url;
